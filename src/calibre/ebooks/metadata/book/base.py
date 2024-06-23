@@ -710,7 +710,7 @@ class Metadata:
             elif datatype == 'bool':
                 res = _('Yes') if res else _('No')
             elif datatype == 'rating':
-                res = '%.2g'%(res/2)
+                res = '%.2g'%(res)
             elif datatype in ['int', 'float']:
                 try:
                     fmt = cmeta['display'].get('number_format', None)
@@ -750,7 +750,7 @@ class Metadata:
             elif datatype == 'datetime':
                 res = format_date(res, fmeta['display'].get('date_format','dd MMM yyyy'))
             elif datatype == 'rating':
-                res = '%.2g'%(res/2)
+                res = '%.2g'%(res)
             elif key == 'size':
                 res = human_readable(res)
             return (name, str(res), orig_res, fmeta)
