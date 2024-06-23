@@ -688,6 +688,8 @@ class Worker(Thread):  # Get details {{{
                 if not author:
                     continue
                 author = author.replace("),", ")")
+                if re.sub("\s+", " ", " " + author + " ") == " & 0 more ":
+                    continue
                 res.append(author)
             return res
 
