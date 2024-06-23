@@ -493,6 +493,12 @@ class Worker(Thread):  # Get details {{{
         except:
             self.log.exception('Error parsing ratings for url: %r' % self.url)
 
+        mi.num_ratings = None
+        try:
+            mi.num_ratings = self.parse_num_ratings(root)
+        except:
+            self.log.exception('Error parsing number of ratings for url: %r' % self.url)
+
         try:
             mi.comments = self.parse_comments(root, raw)
         except:
@@ -746,6 +752,20 @@ class Worker(Thread):  # Get details {{{
                         return float(txt.replace(',', '.')) * 2
                     except Exception:
                         pass
+
+    def parse_num_ratings(self, root):
+        rating_paths = (
+            '//*[@id="acrCustomerReviewText"]',
+        )
+        elem = None
+        for p in rating_paths:
+            elem = root.xpath(p)
+            if elem:
+                break
+        if not elem:
+            return
+        num = self.totext(elem[0]).strip().split(" ")[0].replace(",", "")
+        return num
 
     def _render_comments(self, desc):
         from calibre.library.comments import sanitize_comments_html
