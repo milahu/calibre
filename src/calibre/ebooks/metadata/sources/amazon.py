@@ -1076,13 +1076,14 @@ class Worker(Thread):  # Get details {{{
             pub = val.partition(';')[0].partition('(')[0].strip()
             if pub:
                 mi.publisher = pub
-            date = val.rpartition('(')[-1].replace(')', '').strip()
-            try:
-                from calibre.utils.date import parse_only_date
-                date = self.delocalize_datestr(date)
-                mi.pubdate = parse_only_date(date, assume_utc=True)
-            except:
-                self.log.exception('Failed to parse pubdate: %s' % val)
+            if "(" in val and ")" in val:
+                date = val.rpartition('(')[-1].replace(')', '').strip()
+                try:
+                    from calibre.utils.date import parse_only_date
+                    date = self.delocalize_datestr(date)
+                    mi.pubdate = parse_only_date(date, assume_utc=True)
+                except:
+                    self.log.exception('Failed to parse pubdate: %s' % val)
         elif re.fullmatch("Audible\.[a-z.]{2,10} Release Date", name):
             # Audible.com Audible.de ...
             date = val
