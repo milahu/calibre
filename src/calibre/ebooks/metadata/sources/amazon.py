@@ -345,9 +345,10 @@ class Worker(Thread):  # Get details {{{
                     starts-with(text(), "Utgivare:") or \
                     starts-with(text(), "出版社:")]
             '''
+        # Audible.com Audible.de ...
         self.pubdate_xpath = '''
             descendant::*[starts-with(text(), "Publication Date:") or \
-                    starts-with(text(), "Audible.com Release Date:")]
+                    matches(text(), "Audible\.[a-z.]{2,10} Release Date:")]
         '''
         self.publisher_names = {'Publisher', 'Uitgever', 'Verlag', 'Utgivare', 'Herausgeber',
                                 'Editore', 'Editeur', 'Éditeur', 'Editor', 'Editora', '出版社'}
@@ -524,6 +525,7 @@ class Worker(Thread):  # Get details {{{
             'div#bookDetails_container_div div#nonHeroSection')) or tuple(self.selector(
                 '#productDetails_techSpec_sections'))
         feature_and_detail_bullets = root.xpath('//*[@data-feature-name="featureBulletsAndDetailBullets"]')
+        audiobook_details = root.xpath('//*[@id="audibleProductDetails"]')
         mi._details = dict()
         if detail_bullets:
             self.parse_detail_bullets(root, mi, detail_bullets[0])
@@ -536,6 +538,8 @@ class Worker(Thread):  # Get details {{{
                     'Failed to parse new-style book details section')
         elif feature_and_detail_bullets:
             self.parse_detail_bullets(root, mi, feature_and_detail_bullets[0], ul_selector='ul')
+        elif audiobook_details:
+            self.parse_new_details(root, mi, audiobook_details[0])
 
         else:
             pd = root.xpath(self.pd_xpath)
@@ -1079,6 +1083,15 @@ class Worker(Thread):  # Get details {{{
                 mi.pubdate = parse_only_date(date, assume_utc=True)
             except:
                 self.log.exception('Failed to parse pubdate: %s' % val)
+        elif re.fullmatch("Audible\.[a-z.]{2,10} Release Date", name):
+            # Audible.com Audible.de ...
+            date = val
+            try:
+                from calibre.utils.date import parse_only_date
+                date = self.delocalize_datestr(date)
+                mi.pubdate = parse_only_date(date, assume_utc=True)
+            except:
+                self.log.exception('Failed to parse audible pubdate: %s' % val)
         elif name in {'ISBN', 'ISBN-10', 'ISBN-13'}:
             ans = check_isbn(val)
             if ans:
@@ -1087,6 +1100,18 @@ class Worker(Thread):  # Get details {{{
             from calibre.utils.date import parse_only_date
             date = self.delocalize_datestr(val)
             mi.pubdate = parse_only_date(date, assume_utc=True)
+        elif name in {'Best Sellers Rank'}:
+            val = []
+            is_first = True
+            for elem in c2.xpath('span/descendant::span'):
+                v = self.totext(elem).strip()
+                v = v.replace('\u200e', '').replace('\u200f', '')
+                if is_first:
+                    # "(See Top 100 in Audible Audiobooks)"
+                    v = v.split(" (See Top ")[0]
+                    is_first = False
+                val.append(v)
+            mi._details[name] = val
 
     def parse_best_sellers_rank(self, root, mi):
         if "Best Sellers Rank" in mi._details:
