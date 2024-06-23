@@ -652,7 +652,7 @@ class Worker(Thread):  # Get details {{{
         ):
             matches = tuple(self.selector(sel))
             if matches:
-                authors = [self.totext(x) for x in matches]
+                authors = [self.totext(x).strip() for x in matches]
                 return [a for a in authors if a]
 
         x = '//h1[contains(@class, "parseasinTitle")]/following-sibling::span/*[(name()="a" and @href) or (name()="span" and @class="contributorNameTrigger")]'
