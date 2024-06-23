@@ -521,7 +521,7 @@ def fillout_tree(root, items, node_id_map, category_nodes, category_data, field_
         for book_id in item['id_set']:
             rating = book_rating_map.get(book_id, 0)
             if rating:
-                total += rating/2.0
+                total += rating
                 count += 1
         item['avg_rating'] = float(total)/count if count else 0
 

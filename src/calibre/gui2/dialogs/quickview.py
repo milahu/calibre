@@ -594,9 +594,9 @@ class Quickview(QDialog, Ui_Quickview):
             self.no_valid_items = False
             if self.fm[key]['datatype'] == 'rating':
                 if self.fm[key]['display'].get('allow_half_stars', False):
-                    vals = str(vals/2.0)
+                    vals = str(vals)
                 else:
-                    vals = str(vals//2)
+                    vals = str(int(vals))
             if not isinstance(vals, list):
                 vals = [vals]
             vals.sort(key=sort_key)

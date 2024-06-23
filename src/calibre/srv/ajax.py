@@ -63,7 +63,7 @@ def book_to_json(ctx, rd, db, book_id,
     codec = JsonCodec(db.field_metadata)
     if not device_compatible:
         try:
-            mi.rating = mi.rating/2.
+            mi.rating = mi.rating
         except Exception:
             mi.rating = 0.0
     data = codec.encode_book_metadata(mi)

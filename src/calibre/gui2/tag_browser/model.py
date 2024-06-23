@@ -852,7 +852,7 @@ class TagsModel(QAbstractItemModel):  # {{{
                         for book_id in t.id_set:
                             rating = book_rating_map.get(book_id, 0)
                             if rating:
-                                total += rating/2.0
+                                total += rating
                                 count += 1
                         node_parent.cached_average_rating = float(total)/count if total and count else 0
             return

@@ -37,7 +37,7 @@ class Tag:
         self.is_editable = is_editable
         self.is_searchable = is_searchable
         self.id_set = id_set if id_set is not None else set()
-        self.avg_rating = avg/2.0 if avg is not None else 0
+        self.avg_rating = avg if avg is not None else 0
         self.sort = sort
         self.use_sort_as_name = use_sort_as_name
         self.category = category
@@ -306,7 +306,7 @@ def get_categories(dbcache, sort='name', book_ids=None, first_letter_sort=False)
                             for id_ in t.id_set:
                                 rating = book_rating_map.get(id_, 0)
                                 if rating:
-                                    total_rating += rating/2
+                                    total_rating += rating
                                     count += 1
                             if total_rating and count:
                                 t.avg_rating = total_rating/count

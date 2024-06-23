@@ -787,7 +787,7 @@ class Metadata:
         if not self.is_null('languages'):
             fmt('Languages', ', '.join(self.languages))
         if self.rating is not None:
-            fmt('Rating', ('%.2g'%(float(self.rating)/2)) if self.rating
+            fmt('Rating', ('%.2g'%(float(self.rating))) if self.rating
                     else '')
         if self.timestamp is not None:
             fmt('Timestamp', isoformat(self.timestamp))
