@@ -111,7 +111,15 @@ def parse_date(date_string, assume_utc=False, as_utc=True, default=None):
     if iso_pat().match(date_string) is not None:
         dt = parse(date_string, default=default)
     else:
+        # fix: dateutil.parser._parser.ParserError: Unknown string format: 26. Juli 2017
+        # https://github.com/kovidgoyal/calibre/pull/2370
         dt = parse(date_string, default=default, dayfirst=parse_date_day_first)
+        # https://github.com/scrapinghub/dateparser
+        """
+        import dateparser
+        dt = dateparser.parse(date_string)
+        """
+        #dt = delocalize_datestr(date_string, default=default, dayfirst=parse_date_day_first)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=_utc_tz if assume_utc else _local_tz)
     return dt.astimezone(_utc_tz if as_utc else _local_tz)

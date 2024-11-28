@@ -93,6 +93,7 @@ def parse_html(raw):
 
 
 def parse_details_page(url, log, timeout, browser, domain, cache_path=None):
+    # FIXME without url
     from lxml.html import tostring
 
     from calibre.ebooks.chardet import xml_to_unicode
@@ -205,6 +206,11 @@ class Worker(Thread):  # Get details {{{
         self.preparsed_root = preparsed_root
         self.daemon = True
         self.testing = testing
+        if url is None:
+            # quickfix for
+            # if 'amazon.com.br' in url:
+            # TypeError: argument of type 'NoneType' is not iterable
+            url = ""
         self.url, self.result_queue = url, result_queue
         self.log, self.timeout = log, timeout
         self.filter_result = filter_result or (lambda x, log: True)
@@ -215,6 +221,17 @@ class Worker(Thread):  # Get details {{{
         self.cache_path = cache_path
         from lxml.html import tostring
         self.tostring = tostring
+
+        if not self.domain and self.cache_path:
+            # parse domain from javascript:
+            # line 34: ue_sn = 'www.amazon.de',
+            # line 284: 'Application': 'Retail:Prod:www.amazon.de',
+            with open(self.cache_path) as f:
+                html = f.read()
+            match = re.search(r"ue_sn = 'www\.amazon\.([a-z.]+)',", html)
+            if match:
+                self.domain = match.group(1)
+            del html
 
         months = {  # {{{
             'de': {
@@ -431,10 +448,16 @@ class Worker(Thread):  # Get details {{{
         try:
             self.get_details()
         except:
+            import sys
+            import traceback
+            print("self.get_details failed", traceback.format_exc(), file=sys.stderr)
+            # FIXME self.log does not print exc
+            self.log.filter_level = 0 # debug
             self.log.exception('get_details failed for url: %r' % self.url)
 
     def get_details(self):
         if self.preparsed_root is None:
+            # FIXME without self.url
             raw, root, selector = parse_details_page(
                 self.url, self.log, self.timeout, self.browser, self.domain, self.cache_path)
         else:
@@ -443,8 +466,15 @@ class Worker(Thread):  # Get details {{{
         from css_selectors import Select
         self.selector = Select(root)
         self.parse_details(raw, root)
+        #if self.domain is None:
+        # TODO parse amazon domain from self.cache_path
+        if self.url is None:
+            domain = self.domain or "com"
+            domain = self.domain or "de" # quickfix
+            self.url = f"https://www.amazon.{domain}/dp/{self.amazon_id}"
 
     def parse_details(self, raw, root):
+        # FIXME without self.url
         asin = parse_asin(root, self.log, self.url)
         if not asin and root.xpath('//form[@action="/errors/validateCaptcha"]'):
             raise CaptchaError(
@@ -531,6 +561,7 @@ class Worker(Thread):  # Get details {{{
             'div#bookDetails_container_div div#nonHeroSection')) or tuple(self.selector(
                 '#productDetails_techSpec_sections'))
         feature_and_detail_bullets = root.xpath('//*[@data-feature-name="featureBulletsAndDetailBullets"]')
+        #audiobook_details = root.xpath('//*[@id="audibleProductDetails"]/div/table')
         audiobook_details = root.xpath('//*[@id="audibleProductDetails"]')
         mi._details = dict()
         if detail_bullets:
@@ -1103,6 +1134,7 @@ class Worker(Thread):  # Get details {{{
                 try:
                     from calibre.utils.date import parse_only_date
                     date = self.delocalize_datestr(date)
+                    # FIXME dateutil.parser._parser.ParserError: Unknown string format: 26. Juli 2017
                     mi.pubdate = parse_only_date(date, assume_utc=True)
                 except:
                     self.log.exception('Failed to parse pubdate: %s' % val)
@@ -1119,11 +1151,19 @@ class Worker(Thread):  # Get details {{{
             ans = check_isbn(val)
             if ans:
                 self.isbn = mi.isbn = ans
+                # store all ISBN values
+                if name == 'ISBN-10':
+                    self.isbn10 = mi.isbn10 = ans
+                elif name == 'ISBN-13':
+                    self.isbn13 = mi.isbn13 = ans
         elif name in {'Publication date'}:
             from calibre.utils.date import parse_only_date
             date = self.delocalize_datestr(val)
             mi.pubdate = parse_only_date(date, assume_utc=True)
-        elif name in {'Best Sellers Rank'}:
+        elif name in {
+                'Best Sellers Rank',
+                'Amazon Bestseller-Rang', # german
+            }:
             val = []
             is_first = True
             for elem in c2.xpath('span/descendant::span'):
@@ -1132,6 +1172,7 @@ class Worker(Thread):  # Get details {{{
                 if is_first:
                     # "(See Top 100 in Audible Audiobooks)"
                     v = v.split(" (See Top ")[0]
+                    v = v.split(" (Siehe Top ")[0] # german
                     is_first = False
                 val.append(v)
             mi._details[name] = val

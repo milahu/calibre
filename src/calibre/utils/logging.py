@@ -174,6 +174,9 @@ class Log:
         self.flush()
 
     def exception(self, *args, **kwargs):
+        import sys
+        print("Log.exception", args, kwargs, file=sys.stderr)
+        #sys.stderr.flush()
         limit = kwargs.pop('limit', None)
         self.print_with_flush(ERROR, *args, **kwargs)
         self.print_with_flush(DEBUG, traceback.format_exc(limit))
@@ -222,6 +225,9 @@ class ThreadSafeLog(Log):
             Log.print_with_flush(self, *args, **kwargs)
 
     def exception(self, *args, **kwargs):
+        import sys
+        print("Log.exception", args, kwargs, file=sys.stderr)
+        #sys.stderr.flush()
         limit = kwargs.pop('limit', None)
         with self._lock:
             Log.print_with_flush(self, ERROR, *args, **kwargs)
