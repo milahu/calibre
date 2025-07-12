@@ -232,7 +232,7 @@ class MetadataSingleDialogBase(QDialog):
         self.swap_title_author_button = QToolButton(self)
         self.swap_title_author_button.setIcon(QIcon.ic('swap.png'))
         self.swap_title_author_button.setToolTip(_(
-            'Swap the author and title') + ' [%s]' % self.swap_title_author_shortcut.key().toString(QKeySequence.SequenceFormat.NativeText))
+            'Swap the author and title') + f' [{self.swap_title_author_shortcut.key().toString(QKeySequence.SequenceFormat.NativeText)}]')
         self.swap_title_author_button.clicked.connect(self.swap_title_author)
         self.swap_title_author_shortcut.activated.connect(self.swap_title_author_button.click)
 
@@ -240,7 +240,7 @@ class MetadataSingleDialogBase(QDialog):
         self.manage_authors_button.setIcon(QIcon.ic('user_profile.png'))
         self.manage_authors_button.setToolTip('<p>' + _(
             'Open the Manage Authors editor. Use to rename authors and correct '
-            'individual author\'s sort values') + '</p>')
+            "individual author's sort values") + '</p>')
         self.manage_authors_button.clicked.connect(self.authors.manage_authors)
 
         self.series_editor_button = QToolButton(self)
@@ -465,11 +465,11 @@ class MetadataSingleDialogBase(QDialog):
     def update_window_title(self, *args):
         title = self.title.current_val
         if len(title) > 50:
-            title = title[:50] + '\u2026'
+            title = title[:50] + '…'
         self.setWindowTitle(BASE_TITLE + ' - ' +
                 title + ' -' +
                 _(' [%(num)d of %(tot)d]')%dict(num=self.current_row+1,
-                tot=len(self.row_list)))
+                tot=len(self.id_list)))
 
     def swap_title_author(self, *args):
         title = self.title.current_val
@@ -674,7 +674,7 @@ class MetadataSingleDialogBase(QDialog):
                 widget.commit(self.db, self.book_id)
                 self.books_to_refresh |= getattr(widget, 'books_to_refresh', set())
             except OSError as e:
-                e.locking_violation_msg = _('Could not change on-disk location of this book\'s files.')
+                e.locking_violation_msg = _("Could not change on-disk location of this book's files.")
                 raise
         for widget in getattr(self, 'custom_metadata_widgets', []):
             self.books_to_refresh |= widget.commit(self.book_id)
@@ -690,8 +690,8 @@ class MetadataSingleDialogBase(QDialog):
         self.save_state()
         if not self.apply_changes():
             return
-        if self.editing_multiple and self.current_row != len(self.row_list) - 1:
-            num = len(self.row_list) - 1 - self.current_row
+        if self.editing_multiple and self.current_row != len(self.id_list) - 1:
+            num = len(self.id_list) - 1 - self.current_row
             from calibre.gui2 import question_dialog
             pm = ngettext('There is another book to edit in this set.',
                           'There are still {} more books to edit in this set.', num).format(num)
@@ -725,7 +725,7 @@ class MetadataSingleDialogBase(QDialog):
     # Dialog use methods {{{
     def start(self, row_list, current_row, view_slot=None, edit_slot=None,
             set_current_callback=None):
-        self.row_list = row_list
+        self.id_list = list(map(self.db.id, row_list))
         self.current_row = current_row
         if view_slot is not None:
             self.view_format.connect(view_slot)
@@ -772,9 +772,9 @@ class MetadataSingleDialogBase(QDialog):
         self.update_window_title()
         prev = next_ = None
         if self.current_row > 0:
-            prev = self.db.title(self.row_list[self.current_row-1])
-        if self.current_row < len(self.row_list) - 1:
-            next_ = self.db.title(self.row_list[self.current_row+1])
+            prev = self.db.new_api.field_for('title', self.id_list[self.current_row-1])
+        if self.current_row < len(self.id_list) - 1:
+            next_ = self.db.new_api.field_for('title', self.id_list[self.current_row+1])
 
         if next_ is not None:
             tip = _('Save changes and edit the metadata of {0} [{1}]').format(
@@ -788,7 +788,7 @@ class MetadataSingleDialogBase(QDialog):
         self.prev_button.setEnabled(prev is not None)
         self.button_box.button(QDialogButtonBox.StandardButton.Ok).setDefault(True)
         self.button_box.button(QDialogButtonBox.StandardButton.Ok).setFocus(Qt.FocusReason.OtherFocusReason)
-        self(self.db.id(self.row_list[self.current_row]))
+        self(self.id_list[self.current_row])
         for w, state in iteritems(self.comments_edit_state_at_apply):
             if state == 'code':
                 w.tab = 'code'
@@ -841,7 +841,7 @@ class MetadataSingleDialog(MetadataSingleDialogBase):  # {{{
         self.tabs = []
         self.labels = []
         self.tabs.append(QWidget(self))
-        self.central_widget.addTab(ScrollArea(self.tabs[0], self), _("&Basic metadata"))
+        self.central_widget.addTab(ScrollArea(self.tabs[0], self), _('&Basic metadata'))
         self.tabs[0].l = l = QVBoxLayout()
         self.tabs[0].tl = tl = QGridLayout()
         self.tabs[0].setLayout(l)
@@ -1006,12 +1006,12 @@ class MetadataSingleDialogAlt1(MetadataSingleDialogBase):  # {{{
 
         self.on_drag_enter.connect(self.handle_drag_enter)
         self.tabs.append(DragTrackingWidget(self, self.on_drag_enter))
-        self.central_widget.addTab(ScrollArea(self.tabs[0], self), _("&Metadata"))
+        self.central_widget.addTab(ScrollArea(self.tabs[0], self), _('&Metadata'))
         self.tabs[0].l = QGridLayout()
         self.tabs[0].setLayout(self.tabs[0].l)
 
         self.tabs.append(QWidget(self))
-        self.central_widget.addTab(ScrollArea(self.tabs[1], self), _("&Cover and formats"))
+        self.central_widget.addTab(ScrollArea(self.tabs[1], self), _('&Cover and formats'))
         self.tabs[1].l = QGridLayout()
         self.tabs[1].setLayout(self.tabs[1].l)
 
@@ -1083,7 +1083,7 @@ class MetadataSingleDialogAlt1(MetadataSingleDialogBase):  # {{{
         sto(self.tags_editor_button, self.publisher_editor_button)
         sto(self.publisher_editor_button, self.paste_isbn_button)
         tl.addItem(QSpacerItem(1, 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding),
-                   13, 1, 1 ,1)
+                   13, 1, 1, 1)
 
         w = getattr(self, 'custom_metadata_widgets_parent', None)
         if w is not None:
@@ -1166,7 +1166,7 @@ class MetadataSingleDialogAlt2(MetadataSingleDialogBase):  # {{{
 
         main_splitter = self.main_splitter = Splitter(Qt.Orientation.Horizontal, self)
         self.central_widget.tabBar().setVisible(False)
-        self.central_widget.addTab(ScrollArea(main_splitter, self), _("&Metadata"))
+        self.central_widget.addTab(ScrollArea(main_splitter, self), _('&Metadata'))
 
         # Left side (metadata & comments)
         # basic and custom split from comments
@@ -1242,7 +1242,7 @@ class MetadataSingleDialogAlt2(MetadataSingleDialogBase):  # {{{
         sto(self.tags_editor_button, self.publisher_editor_button)
         sto(self.publisher_editor_button, self.paste_isbn_button)
         tl.addItem(QSpacerItem(1, 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding),
-                   13, 1, 1 ,1)
+                   13, 1, 1, 1)
 
         # Custom metadata in col 1
         w = getattr(self, 'custom_metadata_widgets_parent', None)

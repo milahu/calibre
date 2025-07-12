@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 __license__ = 'GPL v3'
-__copyright__ = '2008-2024, Darko Miletic <darko.miletic at gmail.com>'
+__copyright__ = '2008-2025, Darko Miletic <darko.miletic at gmail.com>'
 '''
 pagina12.com.ar
 '''
@@ -33,7 +33,7 @@ class Pagina12(BasicNewsRecipe):
     articles_are_obfuscated = True
     temp_files              = []
     fetch_retries           = 10
-    extra_css            = """
+    extra_css            = '''
         body{font-family: "Open Sans", sans-serif}
         .article-date{font-size: small; margin-bottom: 1em;}
         .article-title{font-size: x-large; font-weight: bold; display: block; margin-bottom: 1em; margin-top: 1em;}
@@ -43,7 +43,7 @@ class Pagina12(BasicNewsRecipe):
         img{margin-top:1em; margin-bottom: 1em; display:block}
         .article-text p:first-letter{display: inline; font-size: xx-large; font-weight: bold}
         .article-prefix{font-family: "Archivo Narrow",Helvetica,sans-serif; font-size: small; text-transform: uppercase;}
-    """
+    '''
 
     conversion_options = {
         'comment': description, 'tags': category, 'publisher': publisher, 'language': language
@@ -51,17 +51,16 @@ class Pagina12(BasicNewsRecipe):
 
     remove_tags = [
         dict(name=['meta', 'link']),
-        dict(attrs={'class':'article-main-media-social show-for-medium'})
+        dict(attrs={'class':['article-main-media-social show-for-medium', 'social-share-bar', 'iframely-embed medium-embedded-content']})
     ]
 
     keep_only_tags=[
-       dict(name='div', attrs={'class':[
-                                        'article-header',
-                                        'article-titles',
-                                        'article-main-media-header',
-                                        'article-main-media',
-                                        'article-text'
-                                       ]})
+        dict(name='h2', attrs={'class': lambda x: x and 'h4' in x}),
+        dict(name='h1'),
+        dict(name='h2', attrs={'class': lambda x: x and 'h3' in x}),
+        dict(name='div', attrs={'class': 'author'}),
+        dict(name='div', attrs={'class': lambda x: x and 'article-main-media-image__container' in x}),
+        dict(name='div', attrs={'class': lambda x: x and 'article-main-content' in x})
     ]
 
     def get_browser(self):
@@ -112,6 +111,6 @@ class Pagina12(BasicNewsRecipe):
                 self.temp_files.append(tfile)
                 result = tfile.name
             except:
-                self.info("Retrying download...")
+                self.info('Retrying download...')
             count += 1
         return result

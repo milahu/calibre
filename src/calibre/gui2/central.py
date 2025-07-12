@@ -485,7 +485,7 @@ class CentralContainer(QWidget):
 
     def read_settings(self):
         before = self.serialized_settings()
-        # sadly self.size() doesnt always return sensible values so look at
+        # sadly self.size() doesn't always return sensible values so look at
         # the size of the main window which works perfectly for width, not so
         # perfectly for height
         sz = self.size()
@@ -670,7 +670,7 @@ class CentralContainer(QWidget):
             hs = h.state
             if hs is HandleState.both_visible or hs is HandleState.only_side_visible:
                 height = normal_handle_width
-            if hs is HandleState.only_main_visible and h is self.bottom_handle or (h is self.top_handle and self.separate_cover_browser):
+            if (hs is HandleState.only_main_visible and h is self.bottom_handle) or (h is self.top_handle and self.separate_cover_browser):
                 height = 0
             h.resize(int(central_width), int(height))
             available_height -= height

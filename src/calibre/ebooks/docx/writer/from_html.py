@@ -62,7 +62,7 @@ class TextRun:
         self.first_html_parent = first_html_parent
         if self.ws_pat is None:
             TextRun.ws_pat = self.ws_pat = re.compile(r'\s+')
-            TextRun.soft_hyphen_pat = self.soft_hyphen_pat = re.compile('(\u00ad)')
+            TextRun.soft_hyphen_pat = self.soft_hyphen_pat = re.compile(r'(\xad)')
         self.style = style
         self.texts = []
         self.link = None
@@ -259,7 +259,7 @@ class Block:
             makeelement(p, 'w:bookmarkEnd', w_id=bmark)
 
     def __repr__(self):
-        return 'Block(%r)' % self.runs
+        return f'Block({self.runs!r})'
     __str__ = __repr__
 
     def is_empty(self):
@@ -423,7 +423,7 @@ class Blocks:
                     block.block_lang = None
 
     def __repr__(self):
-        return 'Block(%r)' % self.runs
+        return f'Block({self.runs!r})'
 
 
 class Convert:
@@ -520,7 +520,7 @@ class Convert:
             if float_spec is None and is_float:
                 float_spec = FloatSpec(self.docx.namespace, html_tag, tag_style)
 
-            if display in {'inline', 'inline-block'} or tagname == 'br':  # <br> has display:block but we dont want to start a new paragraph
+            if display in {'inline', 'inline-block'} or tagname == 'br':  # <br> has display:block but we don't want to start a new paragraph
                 if is_float and float_spec.is_dropcaps:
                     self.add_block_tag(tagname, html_tag, tag_style, stylizer, float_spec=float_spec)
                     float_spec = None
@@ -539,12 +539,12 @@ class Convert:
                     self.blocks.start_new_table(html_tag, tag_style)
             else:
                 if tagname == 'img' and is_float:
-                    # Image is floating so dont start a new paragraph for it
+                    # Image is floating so don't start a new paragraph for it
                     self.add_inline_tag(tagname, html_tag, tag_style, stylizer)
                 else:
                     if tagname == 'hr':
                         for edge in 'right bottom left'.split():
-                            tag_style.set('border-%s-style' % edge, 'none')
+                            tag_style.set(f'border-{edge}-style', 'none')
                     self.add_block_tag(tagname, html_tag, tag_style, stylizer, float_spec=float_spec)
 
             for child in html_tag.iterchildren():

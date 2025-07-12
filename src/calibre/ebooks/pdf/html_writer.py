@@ -45,9 +45,10 @@ from calibre.utils.webengine import secure_webengine, send_reply, setup_profile
 from polyglot.builtins import as_bytes, iteritems
 from polyglot.urllib import urlparse
 
-OK, KILL_SIGNAL = range(0, 2)
-HANG_TIME = 60  # seconds
 # }}}
+
+OK, KILL_SIGNAL = range(2)
+HANG_TIME = 60  # seconds
 
 
 # Utils {{{
@@ -131,6 +132,7 @@ def fix_fullscreen_images(container):
                 svg.set('width', '100vw')
                 svg.set('height', '100vh')
                 container.dirty(file_name)
+
 # }}}
 
 
@@ -220,7 +222,7 @@ class UrlSchemeHandler(QWebEngineUrlSchemeHandler):
         if fail_code is None:
             fail_code = QWebEngineUrlRequestJob.Error.UrlNotFound
         rq.fail(fail_code)
-        print(f"Blocking FAKE_PROTOCOL request: {rq.requestUrl().toString()} with code: {fail_code}", file=sys.stderr)
+        print(f'Blocking FAKE_PROTOCOL request: {rq.requestUrl().toString()} with code: {fail_code}', file=sys.stderr)
 
 # }}}
 
@@ -480,6 +482,7 @@ def job_for_name(container, name, margins, page_layout):
         new_margins = QMarginsF(*resolve_margins(margins, page_layout))
         page_layout.setMargins(new_margins)
     return index_file, page_layout, name
+
 # }}}
 
 
@@ -515,10 +518,11 @@ def create_margin_files(container):
         if margins:
             margins = dict_to_margins(json.loads(margins))
         yield MarginFile(name, margins)
+
 # }}}
 
 
-# Link handling  {{{
+# Link handling {{{
 def add_anchors_markup(root, uuid, anchors):
     body = last_tag(root)
     div = body.makeelement(
@@ -624,7 +628,7 @@ def make_anchors_unique(container, log):
 
 class AnchorLocation:
 
-    __slots__ = ('pagenum', 'left', 'top', 'zoom')
+    __slots__ = ('left', 'pagenum', 'top', 'zoom')
 
     def __init__(self, pagenum=1, left=0, top=0, zoom=0):
         self.pagenum, self.left, self.top, self.zoom = pagenum, left, top, zoom
@@ -680,6 +684,7 @@ def fix_links(pdf_doc, anchor_locations, name_anchor_map, mark_links, log):
         return loc.as_tuple
 
     pdf_doc.alter_links(replace_link, mark_links)
+
 # }}}
 
 
@@ -745,7 +750,7 @@ def get_page_number_display_map(render_manager, opts, num_pages, log):
             if not isinstance(result, dict):
                 raise ValueError('Not a dict')
         except Exception:
-            log.warn(f'Could not do page number mapping, got unexpected result: {repr(result)}')
+            log.warn(f'Could not do page number mapping, got unexpected result: {result!r}')
         else:
             default_map = {int(k): int(v) for k, v in iteritems(result)}
     return default_map
@@ -772,7 +777,7 @@ def add_pagenum_toc(root, toc, opts, page_number_display_map):
     .calibre-pdf-toc .level-%d td:first-of-type { padding-left: %.1gem }
     .calibre-pdf-toc .level-%d td:first-of-type { padding-left: %.1gem }
     .calibre-pdf-toc .level-%d td:first-of-type { padding-left: %.1gem }
-    ''' % tuple(indents) + (opts.extra_css or '')
+    ''' % tuple(indents) + (opts.extra_css or '')  # noqa: UP031
     style = body.makeelement(XHTML('style'), type='text/css')
     style.text = css
     body.append(style)
@@ -790,7 +795,7 @@ def add_pagenum_toc(root, toc, opts, page_number_display_map):
     E('h2', text=(opts.toc_title or _('Table of Contents')), parent=body)
     table = E('table', parent=body)
     for level, node in toc.iterdescendants(level=0):
-        tr = E('tr', cls='level-%d' % level, parent=table)
+        tr = E('tr', cls=f'level-{level}', parent=table)
         E('td', text=node.title or _('Unknown'), parent=tr)
         num = node.pdf_loc.pagenum
         num = page_number_display_map.get(num, num)
@@ -800,7 +805,6 @@ def add_pagenum_toc(root, toc, opts, page_number_display_map):
 
 
 # Fonts {{{
-
 
 def all_glyph_ids_in_w_arrays(arrays, as_set=False):
     ans = set()
@@ -832,7 +836,7 @@ def fonts_are_identical(fonts):
 
 def merge_font_files(fonts, log):
     # As of Qt 5.15.1 Chromium has switched to harfbuzz and dropped sfntly. It
-    # now produces font descriptors whose W arrays dont match the glyph width
+    # now produces font descriptors whose W arrays don't match the glyph width
     # information from the hhea table, in contravention of the PDF spec. So
     # we can no longer merge font descriptors, all we can do is merge the
     # actual sfnt data streams into a single stream and subset it to contain
@@ -1009,7 +1013,7 @@ def add_header_footer(manager, opts, pdf_doc, container, page_number_display_map
         toplevel_toc_map = stack_to_map(create_toc_stack(tc()))
         toplevel_pagenum_map, toplevel_pages_map = page_counts_map(tc())
 
-    dpi = 96  # dont know how to query Qt for this, seems to be the same on all platforms
+    dpi = 96  # don't know how to query Qt for this, seems to be the same on all platforms
     def pt_to_px(pt): return int(pt * dpi / 72)
 
     def create_container(page_num, margins):
@@ -1048,8 +1052,8 @@ def add_header_footer(manager, opts, pdf_doc, container, page_number_display_map
         ans = last_tag(troot)[0]
         style = ans.get('style') or ''
         style = (
-            'margin: 0; padding: 0; height: {height}pt; border-width: 0;'
-            'display: flex; align-items: center; overflow: hidden; background-color: unset;').format(height=height) + style
+            f'margin: 0; padding: 0; height: {height}pt; border-width: 0;'
+            'display: flex; align-items: center; overflow: hidden; background-color: unset;') + style
         ans.set('style', style)
         for child in ans.xpath('descendant-or-self::*[@class]'):
             cls = frozenset(child.get('class').split())
@@ -1103,7 +1107,7 @@ def add_maths_script(container):
         has_maths[name] = hm = check_for_maths(root)
         if not hm:
             continue
-        script = root.makeelement(XHTML('script'), type="text/javascript", src=f'{FAKE_PROTOCOL}://{FAKE_HOST}/mathjax/loader/pdf-mathjax-loader.js')
+        script = root.makeelement(XHTML('script'), type='text/javascript', src=f'{FAKE_PROTOCOL}://{FAKE_HOST}/mathjax/loader/pdf-mathjax-loader.js')
         script.set('async', 'async')
         script.set('data-mathjax-path', f'{FAKE_PROTOCOL}://{FAKE_HOST}/mathjax/data/')
         last_tag(root).append(script)
@@ -1212,9 +1216,9 @@ def convert(opf_path, opts, metadata=None, output_path=None, log=default_log, co
             mult = -1 if i % 2 else 1
             val = opts.pdf_odd_even_offset
             if abs(val) < min(margins.left, margins.right):
-                box = list(pdf_doc.get_page_box("CropBox", i))
+                box = list(pdf_doc.get_page_box('CropBox', i))
                 box[0] += val * mult
-                pdf_doc.set_page_box("CropBox", i, *box)
+                pdf_doc.set_page_box('CropBox', i, *box)
 
     if cover_data:
         add_cover(pdf_doc, cover_data, page_layout, opts)

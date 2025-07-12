@@ -57,7 +57,7 @@ def get_dist(base, which, bitness):
 
 def shutdown_allowed(which, bitness):
     # The ARM64 VM is extremely flakey often booting up to a non-functional
-    # state so dont shut it down as it seems to be more stable once bootup is
+    # state so don't shut it down as it seems to be more stable once boot-up is
     # done.
     return bitness != 'arm64'
 
@@ -163,7 +163,7 @@ class BuildInstaller(Command):
 class BuildInstallers(BuildInstaller):
 
     OS = ''
-    ALL_ARCHES = '64',
+    ALL_ARCHES = ('64',)
 
     def run(self, opts):
         for bitness in self.ALL_ARCHES:
@@ -253,7 +253,7 @@ class ExtDev(Command):
             ext_dir = build_only(which, '', ext)
             src = os.path.join(ext_dir, f'{ext}.so')
             print(
-                "\n\n\x1b[33;1mWARNING: This does not work on macOS, unless you use un-signed builds with ",
+                '\n\n\x1b[33;1mWARNING: This does not work on macOS, unless you use un-signed builds with ',
                 ' ./update-on-ox develop\x1b[m',
                 file=sys.stderr, end='\n\n\n')
             host = 'ox'

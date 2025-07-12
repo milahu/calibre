@@ -136,7 +136,8 @@ class ViewAction(InterfaceAction):
                 merge_annotations(other_annotations_map, annotations_map, merge_last_read=False)
         return {
             'book_id': book_id, 'uuid': db.field_for('uuid', book_id), 'fmt': fmt.upper(),
-            'annotations_map': annotations_map, 'library_id': getattr(self.gui.current_db.new_api, 'server_library_id', None)
+            'annotations_map': annotations_map, 'library_id': getattr(self.gui.current_db.new_api, 'server_library_id', None),
+            'calibre_pid': os.getpid(),
         }
 
     def view_format_by_id(self, id_, format, open_at=None):
@@ -222,7 +223,7 @@ class ViewAction(InterfaceAction):
                 for f in x:
                     all_fmts.add(f)
         if not all_fmts:
-            error_dialog(self.gui,  _('Format unavailable'),
+            error_dialog(self.gui, _('Format unavailable'),
                     _('Selected books have no formats'), show=True)
             return
         d = ChooseFormatDialog(self.gui, _('Choose the format to view'),
@@ -325,6 +326,10 @@ class ViewAction(InterfaceAction):
 
     def view_specific_book(self, index):
         self._view_books([index])
+
+    def view_specific_calibre_book(self, index):
+        ids = [self.gui.library_view.model().id(index)]
+        self._view_calibre_books(ids)
 
     def view_random(self, *args):
         self.gui.iactions['Pick Random Book'].pick_random()

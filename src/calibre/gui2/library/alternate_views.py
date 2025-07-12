@@ -48,7 +48,6 @@ from qt.core import (
     QTimer,
     QToolTip,
     QTreeView,
-    QUrl,
     pyqtProperty,
     pyqtSignal,
     pyqtSlot,
@@ -60,7 +59,7 @@ from qt.core import (
 from calibre import fit_image, human_readable, prepare_string_for_xml
 from calibre.constants import DEBUG, config_dir, islinux
 from calibre.ebooks.metadata import fmt_sidx, rating_to_stars
-from calibre.gui2 import clip_border_radius, config, empty_index, gprefs, rating_font
+from calibre.gui2 import clip_border_radius, config, empty_index, gprefs, rating_font, resolve_grid_color
 from calibre.gui2.dnd import path_from_qurl
 from calibre.gui2.gestures import GestureManager
 from calibre.gui2.library.caches import CoverCache, ThumbnailCache
@@ -133,8 +132,8 @@ def image_to_data(image):  # {{{
     return ret
 # }}}
 
-# Drag 'n Drop {{{
 
+# Drag 'n Drop {{{
 
 def qt_item_view_base_class(self):
     for q in (QTableView, QListView, QTreeView):
@@ -208,7 +207,7 @@ def drag_data(self):
     md.setData('application/calibre+from_library', ids.encode('utf-8'))
     fmt = prefs['output_format']
 
-    def url_for_id(i):
+    def path_for_id(i):
         try:
             ans = db.format_path(i, fmt, index_is_id=True)
         except:
@@ -226,9 +225,10 @@ def drag_data(self):
                     ans = None
         if ans is None:
             ans = db.abspath(i, index_is_id=True)
-        return QUrl.fromLocalFile(ans)
+        return ans
 
-    md.setUrls([url_for_id(i) for i in selected])
+    from calibre.gui2.dnd import set_urls_from_local_file_paths
+    set_urls_from_local_file_paths(md, *[path_for_id(i) for i in selected])
     drag = QDrag(self)
     col = self.selectionModel().currentIndex().column()
     try:
@@ -331,8 +331,8 @@ def setup_dnd_interface(cls_or_self):
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
 # }}}
 
-# Manage slave views {{{
 
+# Manage slave views {{{
 
 def sync(func):
     @wraps(func)
@@ -436,8 +436,8 @@ class AlternateViews:
             self.current_view.marked_changed(old_marked, current_marked)
 # }}}
 
-# Rendering of covers {{{
 
+# Rendering of covers {{{
 
 class CoverDelegate(QStyledItemDelegate):
 
@@ -540,7 +540,7 @@ class CoverDelegate(QStyledItemDelegate):
         ans = None
         if mi is None:
             mi = db.get_proxy_metadata(book_id)
-        ans = formatter.safe_format(rule, mi, '', mi, column_name='cover_grid%d' % rule_index, template_cache=template_cache) or None
+        ans = formatter.safe_format(rule, mi, '', mi, column_name=f'cover_grid{rule_index}', template_cache=template_cache) or None
         cache[book_id][rule] = ans
         return ans, mi
 
@@ -646,7 +646,7 @@ class CoverDelegate(QStyledItemDelegate):
                 if self.title_height != 0:
                     self.paint_title(painter, trect, db, book_id)
             if self.emblem_size > 0:
-                # We dont draw embossed emblems as the ondevice/marked emblems are drawn in the gutter
+                # We don't draw embossed emblems as the ondevice/marked emblems are drawn in the gutter
                 return
             if marked:
                 try:
@@ -739,7 +739,7 @@ class CoverDelegate(QStyledItemDelegate):
             title = db.field_for('title', book_id)
             authors = db.field_for('authors', book_id)
             if title and authors:
-                title = '<b>%s</b>' % ('<br>'.join(wrap(p(title), 120)))
+                title = '<b>{}</b>'.format('<br>'.join(wrap(p(title), 120)))
                 authors = '<br>'.join(wrap(p(' & '.join(authors)), 120))
                 tt = f'{title}<br><br>{authors}'
                 series = db.field_for('series', book_id)
@@ -794,6 +794,7 @@ class GridView(QListView):
         self.setItemDelegate(self.delegate)
         self.setSpacing(self.delegate.spacing)
         self.set_color()
+        QApplication.instance().palette_changed.connect(self.set_color)
         self.ignore_render_requests = Event()
         dpr = self.device_pixel_ratio
         # Up the version number if anything changes in how images are stored in
@@ -880,8 +881,8 @@ class GridView(QListView):
             self.update(idx)
 
     def set_color(self):
-        r, g, b = gprefs['cover_grid_color']
-        tex = gprefs['cover_grid_texture']
+        r, g, b = resolve_grid_color()
+        tex = resolve_grid_color(which='texture')
         pal = self.palette()
         bgcol = QColor(r, g, b)
         pal.setColor(QPalette.ColorRole.Base, bgcol)
@@ -1005,7 +1006,7 @@ class GridView(QListView):
         if db is None:
             return None
         tc = self.thumbnail_cache
-        cdata, timestamp = tc[book_id] # None, None if not cached.
+        cdata, timestamp = tc[book_id]  # None, None if not cached.
         if timestamp is None:
             # Cover not in cache. Try to read the cover from the library.
             has_cover, cdata, timestamp = db.new_api.cover_or_cache(book_id, 0, as_what='pil_image')
@@ -1163,7 +1164,7 @@ class GridView(QListView):
             self.thumbnail_cache.set_database(newdb)
             try:
                 # Use a timeout so that if, for some reason, the render thread
-                # gets stuck, we dont deadlock, future covers won't get
+                # gets stuck, we don't deadlock, future covers won't get
                 # rendered, but this is better than a deadlock
                 join_with_timeout(self.delegate.render_queue)
             except RuntimeError:
@@ -1180,7 +1181,7 @@ class GridView(QListView):
         # Create a range based selector for each set of contiguous rows
         # as supplying selectors for each individual row causes very poor
         # performance if a large number of rows has to be selected.
-        for k, g in itertools.groupby(enumerate(rows), lambda i_x:i_x[0]-i_x[1]):
+        for k, g in itertools.groupby(enumerate(rows), lambda i_x: i_x[0]-i_x[1]):
             group = list(map(operator.itemgetter(1), g))
             sel.merge(QItemSelection(m.index(min(group), 0), m.index(max(group), 0)), QItemSelectionModel.SelectionFlag.Select)
         sm.select(sel, QItemSelectionModel.SelectionFlag.ClearAndSelect)
@@ -1395,7 +1396,7 @@ class GridView(QListView):
             # pixelDelta() is broken on linux with wheel mice
             dy = number_of_degrees.y() / 15.0
             # Scroll by approximately half a row
-            dy = int(math.ceil((dy) * b.singleStep() / 2.0))
+            dy = math.ceil((dy) * b.singleStep() / 2.0)
         else:
             dy = number_of_pixels.y()
         if abs(dy) > 0:

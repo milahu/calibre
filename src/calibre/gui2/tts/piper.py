@@ -8,12 +8,13 @@ import os
 import re
 import sys
 from collections import deque
+from collections.abc import Iterable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import lru_cache
 from itertools import count
 from time import monotonic
-from typing import BinaryIO, Iterable, Iterator
+from typing import BinaryIO
 
 from qt.core import (
     QAudio,
@@ -572,8 +573,8 @@ class PiperEmbedded:
         pv = self._embedded_settings.preferred_voices or {}
         if voice_name and voice_name in self.human_voice_name_map:
             voice = self.human_voice_name_map[voice_name]
-        elif (voice_name := pv.get(lang, '')) and voice_name in self.human_voice_name_map:
-            voice = self.human_voice_name_map[voice_name]
+        elif (voice_name := pv.get(lang, '')) and voice_name in self._voice_name_map:
+            voice = self._voice_name_map[voice_name]
         else:
             voice = self._voice_for_lang.get(lang) or self._default_voice
         return voice
@@ -657,7 +658,7 @@ class PiperEmbedded:
 
 class PipeReader:
 
-    TIMEOUT = 10.  # seconds
+    TIMEOUT = 30.  # seconds
 
     def __init__(self, stdout: BinaryIO, stderr: BinaryIO):
         self.stdout_fd = stdout.fileno()
@@ -754,7 +755,6 @@ class ThreadedPipeReader(PipeReader):
                 break
             else:
                 self.queue.put((data, is_stdout, None))
-
 
 
 def duration_of_raw_audio_data(data: bytes, sample_rate: int = HIGH_QUALITY_SAMPLE_RATE, bytes_per_sample: int = 2, num_channels: int = 1) -> float:

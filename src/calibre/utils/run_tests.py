@@ -48,7 +48,7 @@ class TestResult(unittest.TextTestResult):
         elapsed -= self.start_time.get(test, elapsed)
         self.times[test] = elapsed
         self.stream.writeln = orig
-        self.stream.writeln(' [%.1f s]' % elapsed)
+        self.stream.writeln(f' [{elapsed:.1f} s]')
 
     def stopTestRun(self):
         super().stopTestRun()
@@ -56,7 +56,7 @@ class TestResult(unittest.TextTestResult):
             tests = sorted(self.times, key=self.times.get, reverse=True)
             slowest = [f'{t.id()} [{self.times[t]:.1f} s]' for t in tests[:3]]
             if len(slowest) > 1:
-                self.stream.writeln('\nSlowest tests: %s' % ' '.join(slowest))
+                self.stream.writeln('\nSlowest tests: {}'.format(' '.join(slowest)))
 
 
 def find_tests_in_package(package, excludes=('main.py',)):
@@ -65,7 +65,7 @@ def find_tests_in_package(package, excludes=('main.py',)):
     excludes = set(excludes) | {x + 'c' for x in excludes}
     seen = set()
     for x in items:
-        if (x.endswith('.py') or x.endswith('.pyc')) and x not in excludes:
+        if (x.endswith(('.py', '.pyc'))) and x not in excludes:
             q = x.rpartition('.')[0]
             if q in seen:
                 continue
@@ -84,7 +84,7 @@ def itertests(suite):
                 stack.append(test)
                 continue
             if test.__class__.__name__ == 'ModuleImportFailure':
-                raise Exception('Failed to import a test module: %s' % test)
+                raise Exception(f'Failed to import a test module: {test}')
             yield test
 
 
@@ -146,7 +146,7 @@ def run_tests(find_tests, verbosity=4):
         else:
             tests = filter_tests_by_module(tests, args.name)
         if not tests._tests:
-            raise SystemExit('No test named %s found' % args.name)
+            raise SystemExit(f'No test named {args.name} found')
     run_cli(tests, verbosity, buffer=not args.name)
 
 
@@ -214,6 +214,9 @@ def find_tests(which_tests=None, exclude_tests=None):
     def ok(x):
         return (not which_tests or x in which_tests) and (not exclude_tests or x not in exclude_tests)
 
+    if ok('fork'):  # need these to run first before threads are created or libraries used
+        from calibre.utils.forked_map import find_tests
+        a(find_tests())
     if ok('build'):
         from calibre.test_build import find_tests
         a(find_tests(only_build=True))
@@ -225,6 +228,8 @@ def find_tests(which_tests=None, exclude_tests=None):
         a(find_tests())
     if ok('polish'):
         from calibre.ebooks.oeb.polish.tests.main import find_tests
+        a(find_tests())
+        from calibre.ebooks.oeb.polish.tests.structure import find_tests
         a(find_tests())
     if ok('opf'):
         from calibre.ebooks.metadata.opf2 import suite
@@ -306,6 +311,10 @@ def find_tests(which_tests=None, exclude_tests=None):
         a(find_tests())
         from calibre.utils.copy_files_test import find_tests
         a(find_tests())
+        from calibre.utils.safe_atexit import find_tests
+        a(find_tests())
+        from calibre.gui2.listener import find_tests
+        a(find_tests())
         if iswindows:
             from calibre.utils.windows.wintest import find_tests
             a(find_tests())
@@ -322,7 +331,7 @@ def run_test(test_name, verbosity=4, buffer=False):
     # calibre-debug -t test_name
     which_tests = None
     if test_name.startswith('@'):
-        which_tests = test_name[1:],
+        which_tests = (test_name[1:],)
     tests = find_tests(which_tests)
     if test_name != 'all':
         if test_name.startswith('.'):

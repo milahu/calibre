@@ -122,8 +122,8 @@ class LibraryViewMixin:  # {{{
                     v.set_current_row(0)
                     if v is self.library_view and v.row_count() == 0:
                         self.book_details.reset_info()
+# }}}
 
-    # }}}
 
 class UpdateLabel(QLabel):  # {{{
 
@@ -135,13 +135,14 @@ class UpdateLabel(QLabel):  # {{{
         pass
 # }}}
 
+
 class VersionLabel(QLabel):  # {{{
 
     def __init__(self, parent):
         QLabel.__init__(self, parent)
         self.mouse_over = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(_('See what\'s new in this calibre release'))
+        self.setToolTip(_("See what's new in this calibre release"))
 
     def mouseReleaseEvent(self, ev):
         open_url(localize_website_link('https://calibre-ebook.com/whats-new'))
@@ -171,6 +172,7 @@ class VersionLabel(QLabel):  # {{{
             p.end()
         return QLabel.paintEvent(self, ev)
 # }}}
+
 
 class StatusBar(QStatusBar):  # {{{
 
@@ -237,8 +239,8 @@ class StatusBar(QStatusBar):  # {{{
 
     def clear_message(self):
         self.clearMessage()
-
 # }}}
+
 
 class GridViewButton(LayoutButton):  # {{{
 
@@ -270,9 +272,8 @@ class GridViewButton(LayoutButton):  # {{{
     def restore_state(self):
         if gprefs.get('grid view visible', False):
             self.toggle()
-
-
 # }}}
+
 
 class SearchBarButton(LayoutButton):  # {{{
 
@@ -304,9 +305,8 @@ class SearchBarButton(LayoutButton):  # {{{
 
     def restore_state(self):
         self.setChecked(bool(gprefs.get('search bar visible', True)))
-
-
 # }}}
+
 
 class VLTabs(QTabBar):  # {{{
 
@@ -314,8 +314,8 @@ class VLTabs(QTabBar):  # {{{
         QTabBar.__init__(self, parent)
         self.setDocumentMode(True)
         self.setDrawBase(False)
-        self.setMovable(True)
         self.setTabsClosable(gprefs['vl_tabs_closable'])
+        self.setMovable(self.tabsClosable())
         self.gui = parent
         self.ignore_tab_changed = False
         self.currentChanged.connect(self.tab_changed)
@@ -359,7 +359,8 @@ class VLTabs(QTabBar):  # {{{
     def lock_tab(self):
         gprefs['vl_tabs_closable'] = False
         self.setTabsClosable(False)
-        # Workaround for Qt bug where it doesnt recalculate the tab size after locking
+        self.setMovable(False)
+        # Workaround for Qt bug where it doesn't recalculate the tab size after locking
         for idx in range(self.count()):
             self.setTabButton(idx, QTabBar.ButtonPosition.RightSide, None)
             self.setTabButton(idx, QTabBar.ButtonPosition.LeftSide, None)
@@ -367,6 +368,7 @@ class VLTabs(QTabBar):  # {{{
     def unlock_tab(self):
         gprefs['vl_tabs_closable'] = True
         self.setTabsClosable(True)
+        self.setMovable(True)
         # ensure no button on the All books tab since it is not closeable
         for idx in range(self.count()):
             if not self.tabData(idx):
@@ -392,7 +394,7 @@ class VLTabs(QTabBar):  # {{{
 
     def tab_close(self, index):
         vl = str(self.tabData(index) or '')
-        if vl:  # Dont allow closing the All Books tab
+        if vl:  # Don't allow closing the All Books tab
             self.current_db.new_api.set_pref('virt_libs_hidden', list(
                 self.current_db.new_api.pref('virt_libs_hidden', ())) + [vl])
             self.removeTab(index)
@@ -487,6 +489,30 @@ class VLTabs(QTabBar):  # {{{
 
 # }}}
 
+
+class StatusBarButton(QToolButton):
+
+    def __init__(self, parent, action_name, pref_name, on_click):
+        super().__init__(parent=parent)
+        act = parent.iactions[action_name]
+        self.action_name = action_name
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.setAutoRaise(True)
+        self.setIcon(QIcon.ic(act.action_spec[1]))
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.setText(act.action_spec[0])
+        self.setToolTip(act.action_spec[2])
+        self.setVisible(gprefs[pref_name])
+        parent.status_bar.addPermanentWidget(self)
+        if on_click == 'menu':
+            self.setMenu(act.qaction.menu())
+        elif on_click == 'trigger':
+            self.clicked.connect(act.qaction.trigger)
+        else:
+            raise ValueError(f'make_status_line_action_button: invalid on_click ({on_click}')
+
+
 class LayoutMixin:  # {{{
 
     def __init__(self, *args, **kwargs):
@@ -520,7 +546,6 @@ class LayoutMixin:  # {{{
                 ''')
         for button in reversed(self.layout_buttons):
             self.status_bar.insertPermanentWidget(2, button)
-        self.layout_button.setMenu(LayoutMenu(self))
         self.layout_button.setVisible(not gprefs['show_layout_buttons'])
 
     def init_layout_mixin(self):
@@ -566,13 +591,23 @@ class LayoutMixin:  # {{{
         self.search_bar_button.toggled.connect(self.toggle_search_bar)
 
         self.layout_button = b = QToolButton(self)
+        self.layout_button_menu = m = LayoutMenu(self)
         b.setAutoRaise(True), b.setCursor(Qt.CursorShape.PointingHandCursor)
-        b.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         b.setText(_('Layout')), b.setIcon(QIcon.ic('layout.png'))
         b.setToolTip(_(
             'Show and hide various parts of the calibre main window'))
+        b.clicked.connect(m.toggle_visibility)
         self.status_bar.addPermanentWidget(b)
+
+        # These must be after the layout button because it can be expanded into
+        # the component buttons. Order: last is right-most.
+        # The preferences status bar button isn't (yet) allowed on the status bar
+        # self.sb_preferences_button = StatusBarButton(self, 'Preferences', 'show_sb_preference_button', 'trigger')
+        self.sb_all_gui_actions_button = StatusBarButton(self, 'All GUI actions',
+                                                         'show_sb_all_actions_button', 'menu')
+        self.status_bar_extra_buttons = (self.sb_all_gui_actions_button,)
+
         self.status_bar.addPermanentWidget(self.jobs_button)
         self.setStatusBar(self.status_bar)
         self.status_bar.update_label.linkActivated.connect(self.update_link_clicked)
@@ -766,5 +801,4 @@ class LayoutMixin:  # {{{
         selected = len(v.selectionModel().selectedRows())
         library_total, total, current = v.model().counts()
         self.status_bar.update_state(library_total, total, current, selected)
-
 # }}}

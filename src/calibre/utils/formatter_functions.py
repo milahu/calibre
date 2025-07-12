@@ -22,14 +22,12 @@ from enum import Enum, auto
 from functools import partial
 from math import ceil, floor, modf, trunc
 
-from lxml import html
-
 from calibre import human_readable, prepare_string_for_xml, prints
 from calibre.constants import DEBUG
 from calibre.db.constants import DATA_DIR_NAME, DATA_FILE_PATTERN
-from calibre.db.notes.exim import expand_note_resources, parse_html
 from calibre.ebooks.metadata import title_sort
 from calibre.ebooks.metadata.book.base import field_metadata
+from calibre.ebooks.metadata.search_internet import qquote
 from calibre.utils.config import tweaks
 from calibre.utils.date import UNDEFINED_DATE, format_date, now, parse_date
 from calibre.utils.icu import capitalize, sort_key, strcmp
@@ -55,6 +53,7 @@ FORMATTING_VALUES = _('Formatting values')
 CASE_CHANGES = _('Case changes')
 DATE_FUNCTIONS = _('Date functions')
 DB_FUNCS = _('Database functions')
+URL_FUNCTIONS = _('URL functions')
 
 
 # Class and method to save an untranslated copy of translated strings
@@ -110,11 +109,10 @@ class FormatterFunctions:
 
     def register_builtin(self, func_class):
         if not isinstance(func_class, FormatterFunction):
-            raise ValueError('Class %s is not an instance of FormatterFunction'%(
-                                    func_class.__class__.__name__))
+            raise ValueError(f'Class {func_class.__class__.__name__} is not an instance of FormatterFunction')
         name = func_class.name
         if name in self._functions:
-            raise ValueError('Name %s already used'%name)
+            raise ValueError(f'Name {name} already used')
         self._builtins[name] = func_class
         self._functions[name] = func_class
         for a in func_class.aliases:
@@ -122,11 +120,10 @@ class FormatterFunctions:
 
     def _register_function(self, func_class, replace=False):
         if not isinstance(func_class, FormatterFunction):
-            raise ValueError('Class %s is not an instance of FormatterFunction'%(
-                                    func_class.__class__.__name__))
+            raise ValueError(f'Class {func_class.__class__.__name__} is not an instance of FormatterFunction')
         name = func_class.name
         if not replace and name in self._functions:
-            raise ValueError('Name %s already used'%name)
+            raise ValueError(f'Name {name} already used')
         self._functions[name] = func_class
 
     def register_functions(self, library_uuid, funcs):
@@ -196,7 +193,10 @@ def only_in_gui_error(name):
 
 
 def get_database(mi, name):
-    proxy = mi.get('_proxy_metadata', None)
+    try:
+        proxy = mi.get('_proxy_metadata', None)
+    except Exception:
+        proxy = None
     if proxy is None:
         if name is not None:
             only_in_gui_error(name)
@@ -211,10 +211,10 @@ def get_database(mi, name):
         if name is not None:
             raise ValueError(_('In function {}: The database has been closed').format(name))
         return None
-    wr = getattr(cache, 'library_database_instance', None)
+    wr = getattr(cache, 'database_instance', None)
     if wr is None:
         if name is not None:
-            only_in_gui_error()
+            only_in_gui_error(name)
         return None
     db = wr()
     if db is None:
@@ -248,8 +248,21 @@ class FormatterFunction:
     def only_in_gui_error(self):
         only_in_gui_error(self.name)
 
-    def get_database(self, mi):
-        return get_database(mi, self.name)
+    def get_database(self, mi, formatter=None):
+        # Prefer the db that comes from proxy_metadata because it is probably an
+        # instance of LibraryDatabase where the one in the formatter might be an
+        # instance of Cache
+        formatter_db = getattr(formatter, 'database', None)
+        if formatter_db is None:
+            # The formatter doesn't have a database. Try to get one from
+            # proxy_metadata. This will raise an exception because the name
+            # parameter is not None
+            return get_database(mi, self.name)
+        else:
+            # We have a formatter db. Try to get the db from proxy_metadata but
+            # don't raise an exception if one isn't available.
+            legacy_db = get_database(mi, None)
+            return legacy_db if legacy_db is not None else formatter_db
 
 
 class BuiltinFormatterFunction(FormatterFunction):
@@ -376,7 +389,7 @@ arguments.[/] Can take any number of arguments. In most cases you can use the
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         i = 0
         res = ''
-        for i in range(0, len(args)):
+        for i in range(len(args)):
             res += args[i]
         return res
 
@@ -481,7 +494,7 @@ Throws an exception if ``value`` is not a number.
 
     def evaluate(self, formatter, kwargs, mi, locals, value):
         value = float(value if value and value != 'None' else 0)
-        return str(int(ceil(value)))
+        return str(ceil(value))
 
 
 class BuiltinFloor(BuiltinFormatterFunction):
@@ -496,7 +509,7 @@ an exception if ``value`` is not a number.
 
     def evaluate(self, formatter, kwargs, mi, locals, value):
         value = float(value if value and value != 'None' else 0)
-        return str(int(floor(value)))
+        return str(floor(value))
 
 
 class BuiltinRound(BuiltinFormatterFunction):
@@ -511,7 +524,7 @@ r'''
 
     def evaluate(self, formatter, kwargs, mi, locals, value):
         value = float(value if value and value != 'None' else 0)
-        return str(int(round(value)))
+        return str(round(value))
 
 
 class BuiltinMod(BuiltinFormatterFunction):
@@ -709,7 +722,7 @@ separated by ``separator``.
     def evaluate(self, formatter, kwargs, mi, locals, name, separator):
         res = getattr(mi, name, None)
         if not isinstance(res, list):
-            return "%s is not a list" % name
+            return f'{name} is not a list'
         return separator.join(res)
 
 
@@ -985,14 +998,14 @@ return ``found_val``, otherwise return ``not_found_val``. If ``found_val`` and
             fv = args[0]
             nfv = args[1]
         else:
-            raise ValueError(_("{} requires 2 or 4 arguments").format(self.name))
+            raise ValueError(_('{} requires 2 or 4 arguments').format(self.name))
 
         l = [v.strip() for v in val.split(',') if v.strip()]
-        (id_, __, regexp) = ident.partition(':')
+        id_, __, regexp = ident.partition(':')
         if not id_:
             return nfv
         for candidate in l:
-            i, __, v =  candidate.partition(':')
+            i, __, v = candidate.partition(':')
             if v and i == id_:
                 if not regexp or re.search(regexp, v, flags=re.I):
                     return candidate if fv_is_id else fv
@@ -1041,7 +1054,7 @@ program: re_group(field('series'), "(\S* )(.*)", "{$:uppercase()}", "{$}")'}
         def repl(mo):
             res = ''
             if mo and mo.lastindex:
-                for dex in range(0, mo.lastindex):
+                for dex in range(mo.lastindex):
                     gv = mo.group(dex+1)
                     if gv is None:
                         continue
@@ -1255,7 +1268,6 @@ the :ref:`select` function to get the modification time for a specific format. N
 that format names are always uppercase, as in EPUB.
 ''')
 
-
     def evaluate(self, formatter, kwargs, mi, locals, fmt):
         fmt_data = mi.get('format_metadata', {})
         try:
@@ -1272,6 +1284,7 @@ class BuiltinFormatsSizes(BuiltinFormatterFunction):
     category = GET_FROM_METADATA
     __doc__ = doc = _(
 r'''
+
 ``formats_sizes()`` -- return a comma-separated list of colon-separated
 ``FMT:SIZE`` items giving the sizes of the formats of a book in bytes.[/] You can
 use the ``select()`` function to get the size for a specific format. Note that
@@ -1288,20 +1301,22 @@ format names are always uppercase, as in EPUB.
 
 class BuiltinFormatsPaths(BuiltinFormatterFunction):
     name = 'formats_paths'
-    arg_count = 0
+    arg_count = -1
     category = GET_FROM_METADATA
     __doc__ = doc = _(
 r'''
-``formats_paths()`` -- return a comma-separated list of colon-separated items
-``FMT:PATH`` giving the full path to the formats of a book.[/] You can use the
-``select()`` function to get the path for a specific format. Note that format names
-are always uppercase, as in EPUB.
+``formats_paths([separator])`` -- return a ``separator``-separated list of
+colon-separated items ``FMT:PATH`` giving the full path to the formats of a
+book.[/] The ``separator`` argument is optional. If not supplied then the
+separator is ``', '`` (comma space). If the separator is a comma then you can
+use the ``select()`` function to get the path for a specific format. Note that
+format names are always uppercase, as in EPUB.
 ''')
 
-    def evaluate(self, formatter, kwargs, mi, locals):
+    def evaluate(self, formatter, kwargs, mi, locals, sep=','):
         fmt_data = mi.get('format_metadata', {})
         try:
-            return ','.join(k.upper()+':'+str(v['path']) for k,v in iteritems(fmt_data))
+            return sep.join(k.upper()+':'+str(v['path']) for k,v in iteritems(fmt_data))
         except:
             return ''
 
@@ -1374,7 +1389,7 @@ items from ``start_index`` to ``end_index``.[/] The first item is number zero. I
 an index is negative, then it counts from the end of the list. As a special
 case, an end_index of zero is assumed to be the length of the list.
 
-Examples assuming that the tags column (which is comma-separated) contains "A, B ,C":
+Examples assuming that the tags column (which is comma-separated) contains "A, B, C":
 [LIST]
 [*]``{tags:sublist(0,1,\,)}`` returns "A"
 [*]``{tags:sublist(-1,0,\,)}`` returns "C"
@@ -1475,13 +1490,13 @@ The formatting codes are:
 [LIST]
 [*]``d    :`` the day as number without a leading zero (1 to 31)
 [*]``dd   :`` the day as number with a leading zero (01 to 31)
-[*]``ddd  :`` the abbreviated localized day name (e.g. "Mon" to "Sun").
-[*]``dddd :`` the long localized day name (e.g. "Monday" to "Sunday").
-[*]``M    :`` the month as number without a leading zero (1 to 12).
+[*]``ddd  :`` the abbreviated localized day name (e.g. "Mon" to "Sun")
+[*]``dddd :`` the long localized day name (e.g. "Monday" to "Sunday")
+[*]``M    :`` the month as number without a leading zero (1 to 12)
 [*]``MM   :`` the month as number with a leading zero (01 to 12)
-[*]``MMM  :`` the abbreviated localized month name (e.g. "Jan" to "Dec").
-[*]``MMMM :`` the long localized month name (e.g. "January" to "December").
-[*]``yy   :`` the year as two digit number (00 to 99).
+[*]``MMM  :`` the abbreviated localized month name (e.g. "Jan" to "Dec")
+[*]``MMMM :`` the long localized month name (e.g. "January" to "December")
+[*]``yy   :`` the year as two digit number (00 to 99)
 [*]``yyyy :`` the year as four digit number.
 [*]``h    :`` the hours without a leading 0 (0 to 11 or 0 to 23, depending on am/pm)
 [*]``hh   :`` the hours with a leading 0 (00 to 11 or 00 to 23, depending on am/pm)
@@ -1489,9 +1504,11 @@ The formatting codes are:
 [*]``mm   :`` the minutes with a leading 0 (00 to 59)
 [*]``s    :`` the seconds without a leading 0 (0 to 59)
 [*]``ss   :`` the seconds with a leading 0 (00 to 59)
-[*]``ap   :`` use a 12-hour clock instead of a 24-hour clock, with 'ap' replaced by the localized string for am or pm.
-[*]``AP   :`` use a 12-hour clock instead of a 24-hour clock, with 'AP' replaced by the localized string for AM or PM.
-[*]``iso  :`` the date with time and timezone. Must be the only format present.
+[*]``ap   :`` use a 12-hour clock instead of a 24-hour clock, with 'ap' replaced by the lowercase localized string for am or pm
+[*]``AP   :`` use a 12-hour clock instead of a 24-hour clock, with 'AP' replaced by the uppercase localized string for AM or PM
+[*]``aP   :`` use a 12-hour clock instead of a 24-hour clock, with 'aP' replaced by the localized string for AM or PM
+[*]``Ap   :`` use a 12-hour clock instead of a 24-hour clock, with 'Ap' replaced by the localized string for AM or PM
+[*]``iso  :`` the date with time and timezone. Must be the only format present
 [*]``to_number   :`` convert the date & time into a floating point number (a `timestamp`)
 [*]``from_number :`` convert a floating point number (a `timestamp`) into an
 ISO-formatted date. If you want a different date format then add the
@@ -1546,10 +1563,10 @@ format_date_field('#date_read', 'MMM dd, yyyy')
         try:
             field = field_metadata.search_term_to_field_key(field)
             if field not in mi.all_field_keys():
-                raise ValueError(_("Function %s: Unknown field '%s'")%('format_date_field', field))
+                raise ValueError(_("Function {0}: Unknown field '{1}'").format('format_date_field', field))
             val = mi.get(field, None)
             if mi.metadata_for_field(field)['datatype'] != 'datetime':
-                raise ValueError(_("Function %s: field '%s' is not a date")%('format_date_field', field))
+                raise ValueError(_("Function {0}: field '{1}' is not a date").format('format_date_field', field))
             if val is None:
                 s = ''
             elif format_string == 'to_number':
@@ -1676,11 +1693,12 @@ class BuiltinAnnotationCount(BuiltinFormatterFunction):
     __doc__ = doc = _(
 r'''
 ``annotation_count()`` -- return the total number of annotations of all types
-attached to the current book.[/] This function works only in the GUI.
+attached to the current book.[/] This function works only in the GUI and the
+content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals):
-        c = self.get_database(mi).new_api.annotation_count_for_book(mi.id)
+        c = self.get_database(mi, formatter=formatter).new_api.annotation_count_for_book(mi.id)
         return '' if c == 0 else str(c)
 
 
@@ -1697,7 +1715,7 @@ not marked. This function works only in the GUI.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals):
-        c = self.get_database(mi).data.get_marked(mi.id)
+        c = self.get_database(mi, formatter=formatter).data.get_marked(mi.id)
         return c if c else ''
 
 
@@ -1844,11 +1862,13 @@ You can use expressions to generate a list. For example, assume you want items
 for ``authors`` and ``#genre``, but with the genre changed to the word "Genre: "
 followed by the first letter of the genre, i.e. the genre "Fiction" becomes
 "Genre: F". The following will do that:
+{}''').format('''\
 [CODE]
 program:
-    list_join('#@#', $authors, '&', list_re($#genre, ',', '^(.).*$', 'Genre: \1'),  ',')
+    list_join('#@#', $authors, '&', list_re($#genre, ',', '^(.).*$', 'Genre: \\1'),  ',')
 [/CODE]
-''')
+''')  # not translated as \1 gets mistranslated as a control char in transifex
+    # for some reason. And yes, the double backslash is required, for some reason.
 
     def evaluate(self, formatter, kwargs, mi, locals, with_separator, *args):
         if len(args) % 2 != 0:
@@ -1857,7 +1877,7 @@ program:
                   "associated separator"))
 
         # Starting in python 3.7 dicts preserve order so we don't need OrderedDict
-        result = dict()
+        result = {}
         i = 0
         while i < len(args):
             lst = [v.strip() for v in args[i].split(args[i+1]) if v.strip()]
@@ -1936,7 +1956,7 @@ range(1, 5, 2, 1) -> error(limit exceeded)
         r = range(start_val, stop_val, step_val)
         if len(r) > limit_val:
             raise ValueError(
-                _("{0}: length ({1}) longer than limit ({2})").format(
+                _('{0}: length ({1}) longer than limit ({2})').format(
                             'range', len(r), str(limit_val)))
         return ', '.join([str(v) for v in r])
 
@@ -2025,8 +2045,8 @@ by ``separator``, as are the items in the returned list.
     def evaluate(self, formatter, kwargs, mi, locals, value, direction, separator):
         res = [l.strip() for l in value.split(separator) if l.strip()]
         if separator == ',':
-            return ', '.join(sorted(res, key=sort_key, reverse=direction != "0"))
-        return separator.join(sorted(res, key=sort_key, reverse=direction != "0"))
+            return ', '.join(sorted(res, key=sort_key, reverse=direction != '0'))
+        return separator.join(sorted(res, key=sort_key, reverse=direction != '0'))
 
 
 class BuiltinListEquals(BuiltinFormatterFunction):
@@ -2099,7 +2119,7 @@ uses ``re_group(item, search_re, template ...)`` when doing the replacements.
             def repl(mo):
                 newval = ''
                 if mo and mo.lastindex:
-                    for dex in range(0, mo.lastindex):
+                    for dex in range(mo.lastindex):
                         gv = mo.group(dex+1)
                         if gv is None:
                             continue
@@ -2159,7 +2179,7 @@ returns the empty string.
         except:
             return ''
         i = d1 - d2
-        return '%.1f'%(i.days + (i.seconds/(24.0*60.0*60.0)))
+        return f'{i.days+(i.seconds/(24.0*60.0*60.0)):.1f}'
 
 
 class BuiltinDateArithmetic(BuiltinFormatterFunction):
@@ -2211,7 +2231,7 @@ Example: ``'1s3d-1m'`` will add 1 second, add 3 days, and subtract 1 minute from
             raise e
         except Exception as e:
             traceback.print_exc()
-            raise ValueError(_("{0}: error: {1}").format('date_arithmetic', str(e)))
+            raise ValueError(_('{0}: error: {1}').format('date_arithmetic', str(e)))
 
 
 class BuiltinLanguageStrings(BuiltinFormatterFunction):
@@ -2344,7 +2364,7 @@ and use that column's value in your save/send templates.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals_):
-        db = self.get_database(mi)
+        db = self.get_database(mi, formatter=formatter)
         try:
             a = db.data.get_virtual_libraries_for_books((mi.id,))
             return ', '.join(a[mi.id])
@@ -2368,7 +2388,7 @@ This function works only in the GUI.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals):
-        return self.get_database(mi).data.get_base_restriction_name()
+        return self.get_database(mi, formatter=formatter).data.get_base_restriction_name()
 
 
 class BuiltinUserCategories(BuiltinFormatterFunction):
@@ -2436,10 +2456,11 @@ program:
 ans
 [/CODE]
 [/LIST]
+This function works only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, field_name, field_value):
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             link = None
             item_id = db.get_item_id(field_name, field_value, case_sensitive=True)
@@ -2517,7 +2538,6 @@ on a device has its own device name. The ``storage_location_key`` names are
 ``'main'``, ``'carda'`` and ``'cardb'``. This function works only in the GUI.
 ''')
 
-
     def evaluate(self, formatter, kwargs, mi, locals, storage_location):
         # We can't use get_database() here because we need the device manager.
         # In other words, the function really does need the GUI
@@ -2531,8 +2551,7 @@ on a device has its own device name. The ``storage_location_key`` names are
             try:
                 if storage_location not in {'main', 'carda', 'cardb'}:
                     raise ValueError(
-                         _('connected_device_name: invalid storage location "{}"'
-                                    .format(storage_location)))
+                         _('connected_device_name: invalid storage location "{}"').format(storage_location))
                 info = info['info'][4]
                 if storage_location not in info:
                     return ''
@@ -2569,8 +2588,7 @@ only in the GUI.
             try:
                 if storage_location not in {'main', 'carda', 'cardb'}:
                     raise ValueError(
-                         _('connected_device_name: invalid storage location "{}"'
-                                    .format(storage_location)))
+                         _('connected_device_name: invalid storage location "{}"').format(storage_location))
                 info = info['info'][4]
                 if storage_location not in info:
                     return ''
@@ -2601,21 +2619,20 @@ More than one of ``is_undefined``, ``is_false``, or ``is_true`` can be set to 1.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, field, is_undefined, is_false, is_true):
-        # 'field' is a lookup name, not a value
-        if field not in self.get_database(mi).field_metadata:
-            raise ValueError(_("The column {} doesn't exist").format(field))
         res = getattr(mi, field, None)
+        # Missing fields will return None. Oh well, this lets it be used everywhere,
+        # not just in the GUI.
         if res is None:
             if is_undefined == '1':
                 return 'Yes'
-            return ""
+            return ''
         if not isinstance(res, bool):
             raise ValueError(_('check_yes_no requires the field be a Yes/No custom column'))
         if is_false == '1' and not res:
             return 'Yes'
         if is_true == '1' and res:
             return 'Yes'
-        return ""
+        return ''
 
 
 class BuiltinRatingToStars(BuiltinFormatterFunction):
@@ -2649,12 +2666,13 @@ class BuiltinSwapAroundArticles(BuiltinFormatterFunction):
     arg_count = 2
     category = STRING_MANIPULATION
     __doc__ = doc = _(
-r'''
-``swap_around_articles(value, separator)`` -- returns the ``value`` with articles moved to
-the end.[/] The ``value`` can be a list, in which case each item in the list is
-processed. If the ``value`` is a list then you must provide the ``separator``. If no
-``separator`` is provided then the ``value`` is treated as being a single value, not
-a list. The `articles` are those used by calibre to generate the ``title_sort``.
+r''' ``swap_around_articles(value, separator)`` -- returns the ``value`` with
+articles moved to the end, separated by a semicolon.[/] The ``value`` can be a
+list, in which case each item in the list is processed. If the ``value`` is a
+list then you must provide the ``separator``. If no ``separator`` is provided
+or the separator is the empty string then the ``value`` is treated as being a
+single value, not a list. The `articles` are those used by calibre to generate
+the ``title_sort``.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, separator):
@@ -2766,7 +2784,7 @@ of templates.
 class BuiltinToHex(BuiltinFormatterFunction):
     name = 'to_hex'
     arg_count = 1
-    category = STRING_MANIPULATION
+    category = URL_FUNCTIONS
     __doc__ = doc = _(
 r'''
 ``to_hex(val)`` -- returns the string ``val`` encoded into hex.[/] This is useful
@@ -2780,7 +2798,7 @@ when constructing calibre URLs.
 class BuiltinUrlsFromIdentifiers(BuiltinFormatterFunction):
     name = 'urls_from_identifiers'
     arg_count = 2
-    category = FORMATTING_VALUES
+    category = URL_FUNCTIONS
     __doc__ = doc = _(
 r'''
 ``urls_from_identifiers(identifiers, sort_results)`` -- given a comma-separated
@@ -2858,6 +2876,7 @@ Using a stored template instead of putting the template into the search
 eliminates problems caused by the requirement to escape quotes in search
 expressions.
 [/LIST]
+This function can be used only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, query, use_vl):
@@ -2865,10 +2884,15 @@ expressions.
         if (not tweaks.get('allow_template_database_functions_in_composites', False) and
                 formatter.global_vars.get(rendering_composite_name, None)):
             raise ValueError(_('The book_count() function cannot be used in a composite column'))
-        db = self.get_database(mi)
+        db = self.get_database(mi, formatter=formatter)
         try:
-            ids = db.search_getting_ids(query, None, use_virtual_library=use_vl != '0')
-            return len(ids)
+            if use_vl == '0':
+                # use the new_api search that doesn't use virtual libraries to let
+                # the function work in content server icon rules.
+                ids = db.new_api.search(query, None)
+            else:
+                ids = db.search_getting_ids(query, None, use_virtual_library=True)
+            return str(len(ids))
         except Exception:
             traceback.print_exc()
 
@@ -2886,8 +2910,8 @@ then virtual libraries are ignored. This function and its companion
 ``book_count()`` are particularly useful in template searches, supporting
 searches that combine information from many books such as looking for series
 with only one book. It cannot be used in composite columns unless the tweak
-``allow_template_database_functions_in_composites`` is set to True. It can be
-used only in the GUI.
+``allow_template_database_functions_in_composites`` is set to True. This function
+can be used only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, column, query, sep, use_vl):
@@ -2895,11 +2919,14 @@ used only in the GUI.
         if (not tweaks.get('allow_template_database_functions_in_composites', False) and
                 formatter.global_vars.get(rendering_composite_name, None)):
             raise ValueError(_('The book_values() function cannot be used in a composite column'))
-        db = self.get_database(mi)
+        db = self.get_database(mi, formatter=formatter)
         if column not in db.field_metadata:
             raise ValueError(_("The column {} doesn't exist").format(column))
         try:
-            ids = db.search_getting_ids(query, None, use_virtual_library=use_vl != '0')
+            if use_vl == '0':
+                ids = db.new_api.search(query, None)
+            else:
+                ids = db.search_getting_ids(query, None, use_virtual_library=True)
             s = set()
             for id_ in ids:
                 f = db.new_api.get_proxy_metadata(id_).get(column, None)
@@ -2923,14 +2950,14 @@ r'''
 is supplied then the list is filtered to files that match ``pattern`` before the
 files are counted. The pattern match is case insensitive. See also the functions
 :ref:`extra_file_names`, :ref:`extra_file_size` and :ref:`extra_file_modtime`.
-This function can be used only in the GUI.
+This function can be used only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         if len(args) > 1:
             raise ValueError(_('Incorrect number of arguments for function {0}').format('has_extra_files'))
         pattern = args[0] if len(args) == 1 else None
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             files = tuple(f.relpath.partition('/')[-1] for f in
                           db.list_extra_files(mi.id, use_cache=True, pattern=DATA_FILE_PATTERN))
@@ -2954,14 +2981,15 @@ extra files in the book's ``data/`` folder.[/] If the optional parameter
 ``pattern``, a regular expression, is supplied then the list is filtered to
 files that match ``pattern``. The pattern match is case insensitive. See also
 the functions :ref:`has_extra_files`, :ref:`extra_file_modtime` and
-:ref:`extra_file_size`. This function can be used only in the GUI.
+:ref:`extra_file_size`. This function can be used only in the GUI and the
+content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, sep, *args):
         if len(args) > 1:
             raise ValueError(_('Incorrect number of arguments for function {0}').format('has_extra_files'))
         pattern = args[0] if len(args) == 1 else None
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             files = tuple(f.relpath.partition('/')[-1] for f in
                           db.list_extra_files(mi.id, use_cache=True, pattern=DATA_FILE_PATTERN))
@@ -2983,11 +3011,12 @@ r'''
 ``extra_file_size(file_name)`` -- returns the size in bytes of the extra file
 ``file_name`` in the book's ``data/`` folder if it exists, otherwise ``-1``.[/] See
 also the functions :ref:`has_extra_files`, :ref:`extra_file_names` and
-:ref:`extra_file_modtime`. This function can be used only in the GUI.
+:ref:`extra_file_modtime`. This function can be used only in the GUI and the
+content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, file_name):
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             q = posixpath.join(DATA_DIR_NAME, file_name)
             for f in db.list_extra_files(mi.id, use_cache=True, pattern=DATA_FILE_PATTERN):
@@ -3012,11 +3041,11 @@ exists, otherwise ``-1``. The modtime is formatted according to
 the empty string, returns the modtime as the floating point number of seconds
 since the epoch.  See also the functions :ref:`has_extra_files`,
 :ref:`extra_file_names` and :ref:`extra_file_size`. The epoch is OS dependent.
-This function can be used only in the GUI.
+This function can be used only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, file_name, format_string):
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             q = posixpath.join(DATA_DIR_NAME, file_name)
             for f in db.list_extra_files(mi.id, use_cache=True, pattern=DATA_FILE_PATTERN):
@@ -3054,10 +3083,11 @@ program:
     get_note('authors', 'Isaac Asimov', 1)
 [/CODE]
 [/LIST]
+This function works only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, field_name, field_value, plain_text):
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         try:
             note = None
             item_id = db.get_item_id(field_name, field_value, case_sensitive=True)
@@ -3067,6 +3097,9 @@ program:
                     if plain_text == '1':
                         note = note['searchable_text'].partition('\n')[2]
                     else:
+                        from lxml import html
+
+                        from calibre.db.notes.exim import expand_note_resources, parse_html
                         # Return the full HTML of the note, including all images
                         # as data: URLs. Reason: non-exported note html contains
                         # "calres://" URLs for images. These images won't render
@@ -3122,10 +3155,11 @@ values in ``field_name``. Example:
 [CODE]
     list_count(has_note('authors', ''), '&') ==# list_count_field('authors')
 [/CODE]
+This function works only in the GUI and the content server.
 ''')
 
     def evaluate(self, formatter, kwargs, mi, locals, field_name, field_value):
-        db = self.get_database(mi).new_api
+        db = self.get_database(mi, formatter=formatter).new_api
         if field_value:
             note = None
             try:
@@ -3138,7 +3172,7 @@ values in ``field_name``. Example:
             return '1' if note is not None else ''
         try:
             notes_for_book = db.items_with_notes_in_book(mi.id)
-            values = [v for v in notes_for_book.get(field_name, {}).values()]
+            values = list(notes_for_book.get(field_name, {}).values())
             return db.field_metadata[field_name]['is_multiple'].get('list_to_ui', ', ').join(values)
         except Exception as e:
             traceback.print_exc()
@@ -3186,6 +3220,347 @@ data without converting it to a string first. Example: ``list_count_field('tags'
         raise NotImplementedError()
 
 
+class BuiltinMakeUrl(BuiltinFormatterFunction):
+    name = 'make_url'
+    arg_count = -1
+    category = URL_FUNCTIONS
+    __doc__ = doc = _(
+r'''
+``make_url(path, [query_name, query_value]+)`` -- this function is the easiest way
+to construct a query URL. It uses a ``path``, the web site and page you want to
+query, and ``query_name``, ``query_value`` pairs from which the query is built.
+In general, the ``query_value`` must be URL-encoded. With this function it is always
+encoded and spaces are always replaced with ``'+'`` signs.[/]
+
+At least one ``query_name, query_value`` pair must be provided.
+
+Example: constructing a Wikipedia search URL for the author `{0}`:
+[CODE]
+make_url('https://en.wikipedia.org/w/index.php', 'search', '{0}')
+[/CODE]
+returns
+[CODE]
+https://en.wikipedia.org/w/index.php?search=Niccol%C3%B2+Machiavelli
+[/CODE]
+
+If you are writing a custom column book details URL template then use ``$item_name`` or
+``field('item_name')`` to obtain the value of the field that was clicked on.
+Example: if `{0}` was clicked then you can construct the URL using:
+[CODE]
+make_url('https://en.wikipedia.org/w/index.php', 'search', $item_name)
+[/CODE]
+
+See also the functions :ref:`make_url_extended`, :ref:`query_string` and :ref:`encode_for_url`.
+''').format('Niccolò Machiavelli')  # not translated ans gettext wants pure ascii msgid
+
+    def evaluate(self, formatter, kwargs, mi, locals, path, *args):
+        if (len(args) % 2) != 0:
+            raise ValueError(_('{} requires an odd number of arguments').format('make_url'))
+        if len(args) < 2:
+            raise ValueError(_('{} requires at least 3 arguments').format('make_url'))
+        query_args = []
+        for i in range(0, len(args), 2):
+            query_args.append(f'{args[i]}={qquote(args[i+1].strip())}')
+        return f'{path}?{"&".join(query_args)}'
+
+
+class BuiltinMakeUrlExtended(BuiltinFormatterFunction):
+    name = 'make_url_extended'
+    arg_count = -1
+    category = URL_FUNCTIONS
+    __doc__ = doc = _(
+r'''
+``make_url_extended(...)`` -- this function is similar to :ref:`make_url` but
+gives you more control over the URL components. The components of a URL are
+
+[B]scheme[/B]:://[B]authority[/B]/[B]path[/B]?[B]query string[/B].
+
+See [URL href="https://en.wikipedia.org/wiki/URL"]Uniform Resource Locator[/URL] on Wikipedia for more detail.
+
+The function has two variants:
+[CODE]
+make_url_extended(scheme, authority, path, [query_name, query_value]+)
+[/CODE]
+and
+[CODE]
+make_url_extended(scheme, authority, path, query_string)
+[/CODE]
+[/]
+This function returns a URL constructed from the ``scheme``, ``authority``, ``path``,
+and either the ``query_string`` or a query string constructed from the query argument pairs.
+The ``authority`` can be empty, which is the case for ``calibre`` scheme URLs.
+You must supply either a ``query_string`` or at least one ``query_name, query_value`` pair.
+If you supply ``query_string`` and it is empty then the resulting URL will not have a query string section.
+
+Example 1: constructing a Wikipedia search URL for the author `{0}`:
+[CODE]
+make_url_extended('https', 'en.wikipedia.org', '/w/index.php', 'search', '{0}')
+[/CODE]
+returns
+[CODE]
+https://en.wikipedia.org/w/index.php?search=Niccol%C3%B2+Machiavelli
+[/CODE]
+
+See the :ref:`query_string` function for an example using ``make_url_extended()`` with a ``query_string``.
+
+If you are writing a custom column book details URL template then use ``$item_name`` or
+``field('item_name')`` to obtain the value of the field that was clicked on.
+Example: if `{0}` was clicked on then you can construct the URL using :
+[CODE]
+make_url_extended('https', 'en.wikipedia.org', '/w/index.php', 'search', $item_name')
+[/CODE]
+
+See also the functions :ref:`make_url`, :ref:`query_string` and :ref:`encode_for_url`.
+''').format('Niccolò Machiavelli')  # not translated as gettext wants pure ASCII msgid
+
+    def evaluate(self, formatter, kwargs, mi, locals, scheme, authority, path, *args):
+        if len(args) != 1:
+            if (len(args) % 2) != 0:
+                raise ValueError(_('{} requires an odd number of arguments').format('make_url_extended'))
+            if len(args) < 2:
+                raise ValueError(_('{} requires at least 5 arguments').format('make_url_extended'))
+            query_args = []
+            for i in range(0, len(args), 2):
+                query_args.append(f'{args[i]}={qquote(args[i+1].strip())}')
+            qs = '&'.join(query_args)
+        else:
+            qs = args[0]
+        if qs:
+            qs = '?' + qs
+        return (f"{scheme}://{authority}{'/' if authority else ''}"
+                f"{path[1:] if path.startswith('/') else path}{qs}")
+
+
+class BuiltinQueryString(BuiltinFormatterFunction):
+    name = 'query_string'
+    arg_count = -1
+    category = URL_FUNCTIONS
+    __doc__ = doc = _(
+r'''
+``query_string([query_name, query_value, how_to_encode]+)``-- returns a URL query string
+constructed from the ``query_name, query_value, how_to_encode`` triads.
+A query string is a series of items where each item looks like ``query_name=query_value``
+where ``query_value`` is URL-encoded as instructed. The query items are separated by
+``'&'`` (ampersand) characters.[/]
+
+If ``how_to_encode`` is ``0`` then ``query_value`` is encoded and spaces are replaced
+with ``'+'`` (plus) signs. If ``how_to_encode`` is ``1`` then ``query_value`` is
+encoded with spaces replaced by ``%20``. If ``how_to_encode`` is ``2`` then ``query_value``
+is returned unchanged; no encoding is done and spaces are not replaced. If you want
+``query_value`` not to be encoded but spaces to be replaced then use the :ref:`re`
+function, as in ``re($series, ' ', '%20')``
+
+You use this function if you need specific control over how the parts of the
+query string are constructed. You could then use the resultingquery string in
+:ref:`make_url_extended`, as in
+[CODE]
+make_url_extended(
+       'https', 'your_host', 'your_path',
+       query_string('encoded', '{0}', 0, 'unencoded', '{0}', 2))
+[/CODE]
+giving you
+[CODE]
+https://your_host/your_path?encoded=Hendrik+B%C3%A4%C3%9Fler&unencoded={0}
+[/CODE]
+
+You must have at least one ``query_name, query_value, how_to_encode`` triad, but can
+have as many as you wish.
+
+The returned value is a URL query string with all the specified items, for example:
+``name1=val1[&nameN=valN]*``. Note that the ``'?'`` `path` / `query string` separator
+is not included in the returned result.
+
+If you are writing a custom column book details URL template then use ``$item_name`` or
+``field('item_name')`` to obtain the unencoded value of the field that was clicked.
+You also have ``item_value_quoted`` where the value is already encoded with plus signs
+replacing spaces, and ``item_value_no_plus`` where the value is already encoded
+with ``%20`` replacing spaces.
+
+See also the functions :ref:`make_url`, :ref:`make_url_extended` and :ref:`encode_for_url`.
+''').format('Hendrik Bäßler')
+
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        if (len(args) % 3) != 0 or len(args) < 3:
+            raise ValueError(_('{} requires at least one group of 3 arguments').format('query_string'))
+        funcs = [
+            partial(qquote, use_plus=True),
+            partial(qquote, use_plus=False),
+            lambda x:x,
+        ]
+        query_args = []
+        for i in range(0, len(args), 3):
+            if (f := args[i+2]) not in ('0', '1', '2'):
+                raise ValueError(
+                    _('In {} the third argument of a group must be 0, 1, or 2, not {}').format('query_string', f))
+            query_args.append(f'{args[i]}={funcs[int(f)](args[i+1].strip())}')
+        return '&'.join(query_args)
+
+
+class BuiltinEncodeForURL(BuiltinFormatterFunction):
+    name = 'encode_for_url'
+    arg_count = 2
+    category = URL_FUNCTIONS
+    __doc__ = doc = _(
+r'''
+``encode_for_url(value, use_plus)`` -- returns the ``value`` encoded for use in a URL as
+specified by ``use_plus``. The value is first URL-encoded. Next, if ``use_plus`` is ``0`` then
+spaces are replaced by ``'+'`` (plus) signs. If it is ``1`` then spaces are replaced by ``%20``.[/]
+
+If you do not want the value to be encoding but to have spaces replaced then use the
+:ref:`re` function, as in ``re($series, ' ', '%20')``
+
+See also the functions :ref:`make_url`, :ref:`make_url_extended` and :ref:`query_string`.
+''')
+
+    def evaluate(self, formatter, kwargs, mi, locals, value, use_plus):
+        if use_plus not in ('0', '1'):
+            raise ValueError(
+                _('In {} the second argument must be 0, or 1, not {}').format('quote_for_url', use_plus))
+        return qquote(value, use_plus=use_plus=='0')
+
+
+class BuiltinFormatDuration(BuiltinFormatterFunction):
+    name = 'format_duration'
+    arg_count = -1
+    category = FORMATTING_VALUES
+    __doc__ = doc = _(
+r'''
+``format_duration(value, template, [largest_unit])`` -- format the value, a number
+of seconds, into a string showing weeks, days, hours, minutes, and seconds. If
+the value is a float then it is rounded to the nearest integer.[/]  You choose
+how to format the value using a template consisting of value selectors
+surrounded by ``[`` and ``]`` characters. The selectors are:
+[LIST]
+[*]``[w]``: weeks
+[*]``[d]``: days
+[*]``[h]``: hours
+[*]``[m]``: minutes
+[*]``[s]``: seconds
+[/LIST]
+You can put arbitrary text between selectors.
+
+The following examples use a duration of 2 days (172,800 seconds) 1 hour (3,600 seconds)
+and 20 seconds, which totals to 176,420 seconds.
+[LIST]
+[*]``format_duration(176420, '[d][h][m][s]')`` will return the value ``2d 1h 0m 20s``.
+[*]``format_duration(176420, '[h][m][s]')`` will return the value ``49h 0m 20s``.
+[*]``format_duration(176420, 'Your reading time is [d][h][m][s]')`` returns the value
+``Your reading time is 49h 0m 20s``.
+[*]``format_duration(176420, '[w][d][h][m][s]')`` will return the value ``2d 1h 0m 20s``.
+Note that the zero weeks value is not returned.
+[/LIST]
+If you want to see zero values for items such as weeks in the above example,
+use an uppercase selector. For example, the following uses ``'W'`` to show zero weeks:
+
+``format_duration(176420, '[W][d][h][m][s]')`` returns ``0w 2d 1h 0m 20s``.
+
+By default the text following a value is the selector followed by a space.
+You can change that to whatever text you want. The format for a selector with
+your text is the selector followed by a colon followed by text
+segments separated by ``'|'`` characters. You must include any space characters
+you want in the output.
+
+You can provide from one to three text segments.
+[LIST]
+[*]If you provide one segment, as in ``[w: weeks ]`` then that segment is used for all values.
+[*]If you provide two segments, as in ``[w: weeks | week ]`` then the first segment
+is used for 0 and more than 1. The second segment is used for 1.
+[*]If you provide three segments, as in ``[w: weeks | week | weeks ]`` then the first
+segment is used for 0, the second segment is used for 1, and the third segment is used for
+more than 1.
+[/LIST]
+The second form is equivalent to the third form in many languages.
+
+For example, the selector:
+[LIST]
+[*]``[w: weeks | week | weeks ]`` produces ``'0 weeks '``, ``'1 week '``, or ``'2 weeks '``.
+[*]``[w: weeks | week ]`` produces ``'0 weeks '``, ``'1 week '``, or ``'2 weeks '``.
+[*]``[w: weeks ]`` produces ``0 weeks '``, ``1 weeks '``, or ``2 weeks '``.
+[/LIST]
+
+The optional ``largest_unit`` parameter specifies the largest of weeks, days, hours, minutes,
+and seconds that will be produced by the template. It must be one of the value selectors.
+This can be useful to truncate a value.
+
+``format_duration(176420, '[h][m][s]', 'd')`` will return the value ``1h 0m 20s`` instead of ``49h 0m 20s``.
+''')
+
+    def evaluate(self, formatter, kwargs, mi, locals, value, template, largest_unit=''):
+        if largest_unit not in 'wdhms':
+            raise ValueError(_('the {0} parameter must be one of {1}').format('largest_unit', 'wdhms'))
+
+        pat = re.compile(r'\[(.)(:(.*?))?\]')
+
+        if not largest_unit:
+            highest_index = 0
+            for m in pat.finditer(template):
+                try:
+                    # We know that m.group(1) is a single character so the only
+                    # exception possible is that the character is not in the string
+                    dex = 'smhdw'.index(m.group(1).lower())
+                    highest_index = dex if dex > highest_index else highest_index
+                except Exception:
+                    raise ValueError(_('The {} format specifier is not valid').format(m.group()))
+            largest_unit = 'smhdw'[highest_index]
+
+        int_val = remainder = round(float(value)) if value else 0
+        weeks,remainder = divmod(remainder, 60*60*24*7) if largest_unit == 'w' else (-1,remainder)
+        days,remainder = divmod(remainder, 60*60*24) if largest_unit in 'wd' else (-1,remainder)
+        hours,remainder = divmod(remainder, 60*60) if largest_unit in 'wdh' else (-1,remainder)
+        minutes,remainder = divmod(remainder, 60) if largest_unit in 'wdhm' else (-1,remainder)
+        seconds = remainder
+
+        def repl(mo):
+            fmt_char = mo.group(1)
+            suffixes = mo.group(3)
+            if suffixes is None:
+                zero_suffix = one_suffix = more_suffix = fmt_char.lower() + ' '
+            else:
+                suffixes = re.split(r'\|', suffixes)
+                match len(suffixes):
+                    case 1:
+                        zero_suffix = one_suffix = more_suffix = suffixes[0]
+                    case 2:
+                        zero_suffix = more_suffix = suffixes[0]
+                        one_suffix = suffixes[1]
+                    case 3:
+                        zero_suffix = suffixes[0]
+                        one_suffix = suffixes[1]
+                        more_suffix = suffixes[2]
+                    case _:
+                        raise ValueError(_('The group {} has too many suffixes').format(fmt_char))
+                        zero_suffix = one_suffix = more_suffix = '@@too many suffixes@@'
+
+            def val_with_suffix(val, test_val):
+                match val:
+                    case -1:
+                        return ''
+                    case 0 if fmt_char.islower() and int_val < test_val:
+                        return ''
+                    case 0:
+                        return str(val) + zero_suffix
+                    case 1:
+                        return str(val) + one_suffix
+                    case _:
+                        return str(val) + more_suffix
+
+            match fmt_char.lower():
+                case 'w':
+                    return val_with_suffix(weeks, 60*60*24*7)
+                case 'd':
+                    return val_with_suffix(days, 60*60*24)
+                case 'h':
+                    return val_with_suffix(hours, 60*60)
+                case 'm':
+                    return val_with_suffix(minutes, 60)
+                case 's':
+                    return val_with_suffix(seconds, -1)
+                case _:
+                    raise ValueError(_('The {} format specifier is not valid').format(fmt_char))
+
+        return pat.sub(repl, template)
+
+
 _formatter_builtins = [
     BuiltinAdd(), BuiltinAnd(), BuiltinApproximateFormats(), BuiltinArguments(),
     BuiltinAssign(),
@@ -3195,12 +3570,12 @@ _formatter_builtins = [
     BuiltinCmp(), BuiltinConnectedDeviceName(), BuiltinConnectedDeviceUUID(), BuiltinContains(),
     BuiltinCount(), BuiltinCurrentLibraryName(), BuiltinCurrentLibraryPath(),
     BuiltinCurrentVirtualLibraryName(), BuiltinDateArithmetic(),
-    BuiltinDaysBetween(), BuiltinDivide(), BuiltinEval(),
+    BuiltinDaysBetween(), BuiltinDivide(), BuiltinEncodeForURL(), BuiltinEval(),
     BuiltinExtraFileNames(), BuiltinExtraFileSize(), BuiltinExtraFileModtime(),
     BuiltinFieldListCount(), BuiltinFirstNonEmpty(), BuiltinField(), BuiltinFieldExists(),
     BuiltinFinishFormatting(), BuiltinFirstMatchingCmp(), BuiltinFloor(),
-    BuiltinFormatDate(), BuiltinFormatDateField(), BuiltinFormatNumber(), BuiltinFormatsModtimes(),
-    BuiltinFormatsPaths(), BuiltinFormatsSizes(), BuiltinFractionalPart(),
+    BuiltinFormatDate(), BuiltinFormatDateField(), BuiltinFormatDuration(), BuiltinFormatNumber(),
+    BuiltinFormatsModtimes(),BuiltinFormatsPaths(), BuiltinFormatsSizes(), BuiltinFractionalPart(),
     BuiltinGetLink(),
     BuiltinGetNote(), BuiltinGlobals(), BuiltinHasCover(), BuiltinHasExtraFiles(),
     BuiltinHasNote(), BuiltinHumanReadable(), BuiltinIdentifierInList(),
@@ -3210,9 +3585,10 @@ _formatter_builtins = [
     BuiltinListitem(), BuiltinListJoin(), BuiltinListRe(),
     BuiltinListReGroup(), BuiltinListRemoveDuplicates(), BuiltinListSort(),
     BuiltinListSplit(), BuiltinListUnion(),BuiltinLookup(),
-    BuiltinLowercase(), BuiltinMod(), BuiltinMultiply(), BuiltinNot(), BuiltinOndevice(),
-    BuiltinOr(), BuiltinPrint(), BuiltinRatingToStars(), BuiltinRange(),
-    BuiltinRawField(), BuiltinRawList(),
+    BuiltinLowercase(), BuiltinMakeUrl(), BuiltinMakeUrlExtended(), BuiltinMod(),
+    BuiltinMultiply(), BuiltinNot(), BuiltinOndevice(),
+    BuiltinOr(), BuiltinPrint(), BuiltinQueryString(), BuiltinRatingToStars(),
+    BuiltinRange(), BuiltinRawField(), BuiltinRawList(),
     BuiltinRe(), BuiltinReGroup(), BuiltinRound(), BuiltinSelect(), BuiltinSeriesSort(),
     BuiltinSetGlobals(), BuiltinShorten(), BuiltinStrcat(), BuiltinStrcatMax(),
     BuiltinStrcmp(), BuiltinStrcmpcase(), BuiltinStrInList(), BuiltinStrlen(), BuiltinSubitems(),
@@ -3309,9 +3685,9 @@ def compile_user_template_functions(funcs):
                 func_name = func[0]
             except Exception:
                 func_name = 'Unknown'
-            prints('**** Compilation errors in user template function "%s" ****' % func_name)
+            prints(f'**** Compilation errors in user template function "{func_name}" ****')
             traceback.print_exc(limit=10)
-            prints('**** End compilation errors in %s "****"' % func_name)
+            prints(f'**** End compilation errors in {func_name} "****"')
     return compiled_funcs
 
 

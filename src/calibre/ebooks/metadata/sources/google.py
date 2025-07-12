@@ -60,9 +60,8 @@ def get_details(browser, url, timeout):  # {{{
         raw = browser.open_novisit(url, timeout=timeout).read()
 
     return raw
-
-
 # }}}
+
 
 xpath_cache = {}
 
@@ -197,14 +196,13 @@ def to_metadata(browser, log, entry_, timeout, running_a_test=False):  # {{{
 
     return mi
 
-
 # }}}
 
 
 class GoogleBooks(Source):
 
     name = 'Google'
-    version = (1, 1, 1)
+    version = (1, 1, 2)
     minimum_calibre_version = (2, 80, 0)
     description = _('Downloads metadata and covers from Google Books')
 
@@ -435,7 +433,7 @@ class GoogleBooks(Source):
         se = search_engines_module()
         br = se.google_specialize_browser(se.browser())
         if not has_google_id:
-            url = se.google_format_query(q, tbm='bks')
+            url = se.google_format_query(q, site='books.google.com')
             log('Making query:', url)
             r = []
             root = se.query(br, url, 'google', timeout=timeout, save_raw=r.append)

@@ -86,7 +86,6 @@ def used_font(style, embedded_fonts):
 
 
 class EmbedFonts:
-
     '''
     Embed all referenced fonts, if found on system. Must be called after CSS flattening.
     '''
@@ -142,7 +141,7 @@ class EmbedFonts:
                 for sel in rule.selectorList:
                     sel = sel.selectorText
                     if sel and sel.startswith('.'):
-                        # We dont care about pseudo-selectors as the worst that
+                        # We don't care about pseudo-selectors as the worst that
                         # can happen is some extra characters will remain in
                         # the font
                         sel = sel.partition(':')[0]
@@ -204,7 +203,7 @@ class EmbedFonts:
                 rule = sheet.cssRules[0]
                 page_sheet = self.get_page_sheet()
                 href = page_sheet.abshref(item.href)
-                rule.style.setProperty('src', 'url(%s)' % href)
+                rule.style.setProperty('src', f'url({href})')
                 ff_rules.append(find_font_face_rules(sheet, self.oeb)[0])
                 page_sheet.data.insertRule(rule, len(page_sheet.data.cssRules))
 
@@ -229,7 +228,7 @@ class EmbedFonts:
             name = f['full_name']
             ext = 'otf' if f['is_otf'] else 'ttf'
             name = ascii_filename(name).replace(' ', '-').replace('(', '').replace(')', '')
-            fid, href = self.oeb.manifest.generate(id='font', href='fonts/%s.%s'%(name, ext))
+            fid, href = self.oeb.manifest.generate(id='font', href=f'fonts/{name}.{ext}')
             item = self.oeb.manifest.add(fid, href, guess_type('dummy.'+ext)[0], data=data)
             item.unload_data_from_memory()
             page_sheet = self.get_page_sheet()

@@ -43,7 +43,7 @@ class FFDocEditor(Dialog):
         QApplication.instance().clipboard().setText(self.document_text())
 
     def html_widget(self, layout, row, column):
-        e =  HTMLDisplay()
+        e = HTMLDisplay()
         e.setFrameStyle(QFrame.Shape.Box)
         if iswindows:
             e.setDefaultStyleSheet('pre { font-family: "Segoe UI Mono", "Consolas", monospace; }')
@@ -51,7 +51,7 @@ class FFDocEditor(Dialog):
         return e
 
     def text_widget(self, read_only, layout, row, column):
-        e =  QPlainTextEdit()
+        e = QPlainTextEdit()
         e.setReadOnly(read_only)
         e.setFrameStyle(QFrame.Shape.Box)
         layout.addWidget(e, row, column, 1, 1)
@@ -149,13 +149,13 @@ class FFDocEditor(Dialog):
             try:
                 self.editable_text_result.setHtml(
                     self.ffml.document_to_html(doc.format_again(
-                        self.editable_text_widget.toPlainText()), 'edited text'))
+                        self.editable_text_widget.toPlainText()), 'edited text', safe=False))
             except Exception as e:
                 self.editable_text_result.setHtml(str(e))
         else:
             try:
                 self.editable_text_result.setHtml(
-                    self.ffml.document_to_html(self.editable_text_widget.toPlainText(), 'edited text'))
+                    self.ffml.document_to_html(self.editable_text_widget.toPlainText(), 'edited text', safe=False))
             except Exception as e:
                 self.editable_text_result.setHtml(str(e))
 
@@ -207,7 +207,7 @@ def main():
 
     with TemporaryDirectory() as tdir:
         app = Application([])
-        db = LibraryDatabase(tdir) # needed to load formatter_funcs
+        db = LibraryDatabase(tdir)  # needed to load formatter_funcs
         d = FFDocEditor(None)
         d.exec()
         del db

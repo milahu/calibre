@@ -14,7 +14,7 @@ from threading import Thread
 
 from calibre.constants import iswindows
 from calibre.utils.ipc import eintr_retry_call
-from calibre.utils.ipc.launch import Worker
+from calibre.utils.ipc.launch import Worker, windows_creationflags_for_worker_process
 from calibre.utils.monotonic import monotonic
 from polyglot.builtins import environ_item, string_or_bytes
 
@@ -126,7 +126,7 @@ def create_worker(env, priority='normal', cwd=None, func='main'):
     with a:
         env.update({
             'CALIBRE_WORKER_FD': str(a.fileno()),
-            'CALIBRE_SIMPLE_WORKER': environ_item('calibre.utils.ipc.simple_worker:%s' % func),
+            'CALIBRE_SIMPLE_WORKER': environ_item(f'calibre.utils.ipc.simple_worker:{func}'),
         })
 
         w = Worker(env)
@@ -142,18 +142,14 @@ def start_pipe_worker(command, env=None, priority='normal', **process_args):
     pass_fds = None
     try:
         if iswindows:
-            priority = {
-                    'high'   : subprocess.HIGH_PRIORITY_CLASS,
-                    'normal' : subprocess.NORMAL_PRIORITY_CLASS,
-                    'low'    : subprocess.IDLE_PRIORITY_CLASS}[priority]
-            args['creationflags'] = subprocess.CREATE_NO_WINDOW|priority
+            args['creationflags'] = windows_creationflags_for_worker_process(priority)
             pass_fds = args.pop('pass_fds', None)
             if pass_fds:
                 for fd in pass_fds:
                     os.set_handle_inheritable(fd, True)
                 args['startupinfo'] = subprocess.STARTUPINFO(lpAttributeList={'handle_list':pass_fds})
         else:
-            niceness = {'normal' : 0, 'low'    : 10, 'high'   : 20}[priority]
+            niceness = {'normal': 0, 'low': 10, 'high': 20}[priority]
             args['env']['CALIBRE_WORKER_NICENESS'] = str(niceness)
 
         exe = w.executable

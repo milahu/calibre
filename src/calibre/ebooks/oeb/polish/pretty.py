@@ -42,7 +42,7 @@ def pretty_opf(root):
     def dckey(x):
         return {'title':0, 'creator':1}.get(barename(x.tag), 2)
     for metadata in root.xpath('//opf:metadata', namespaces=OPF_NAMESPACES):
-        dc_tags = metadata.xpath('./*[namespace-uri()="%s"]' % OPF_NAMESPACES['dc'])
+        dc_tags = metadata.xpath('./*[namespace-uri()="{}"]'.format(OPF_NAMESPACES['dc']))
         dc_tags.sort(key=dckey)
         for x in reversed(dc_tags):
             metadata.insert(0, x)
@@ -75,13 +75,13 @@ def pretty_opf(root):
             i = spine_ids.get(x.get('id', None), 1000000000)
         else:
             i = sort_key(href)
-        return (cat, i)
+        return cat, i
 
     for manifest in root.xpath('//opf:manifest', namespaces=OPF_NAMESPACES):
         try:
             children = sorted(manifest, key=manifest_key)
         except AttributeError:
-            continue  # There are comments so dont sort since that would mess up the comments
+            continue  # There are comments so don't sort since that would mess up the comments
         for x in reversed(children):
             manifest.insert(0, x)
 

@@ -73,7 +73,7 @@ def find_portable_library():
         return
     import glob
     candidates = [os.path.basename(os.path.dirname(x)) for x in glob.glob(
-        os.path.join(base, '*%smetadata.db'%os.sep))]
+        os.path.join(base, f'*{os.sep}metadata.db'))]
     if not candidates:
         candidates = ['Calibre Library']
     lp = prefs['library_path']
@@ -92,7 +92,7 @@ def find_portable_library():
 
     if len(lib) > 74:
         error_dialog(None, _('Path too long'),
-            _("Path to Calibre Portable (%s) "
+            _('Path to Calibre Portable (%s) '
                 'too long. It must be less than 59 characters.')%base, show=True)
         raise AbortInit()
 
@@ -115,7 +115,7 @@ def init_qt(args):
             prefs.set('library_path', os.path.abspath(libpath))
             prints('Using library at', prefs['library_path'])
     override = 'calibre-gui' if islinux else None
-    app = Application(args, override_program_name=override, windows_app_uid=MAIN_APP_UID)
+    app = Application(args, override_program_name=override, windows_app_uid=MAIN_APP_UID, should_handle_calibre_urls=True)
 
     app.file_event_hook = EventAccumulator()
     try:
@@ -127,7 +127,8 @@ def init_qt(args):
     # Ancient broken VNC servers cannot handle icons of size greater than 256
     # https://www.mobileread.com/forums/showthread.php?t=278447
     ic = 'lt.png' if is_x11 else 'library.png'
-    app.setWindowIcon(QIcon(I(ic, allow_user_override=False)))
+    if not ismacos:
+        app.setWindowIcon(QIcon(I(ic, allow_user_override=False)))
     return app, opts, args
 
 
@@ -255,7 +256,7 @@ class GuiRunner(QObject):
                 self.splash_screen.finish(main)
                 timed_print('splash screen hidden')
             self.splash_screen = None
-        timed_print('Started up in %.2f seconds'%(monotonic() - self.startup_time), 'with', len(db.data), 'books')
+        timed_print(f'Started up in {monotonic()-self.startup_time:.2f} seconds', 'with', len(db.data), 'books')
         main.set_exception_handler()
         if len(self.args) > 1:
             main.handle_cli_args(self.args[1:])
@@ -374,11 +375,10 @@ class GuiRunner(QObject):
 
 def run_in_debug_mode():
     import subprocess
-    import tempfile
 
+    from calibre.constants import cache_dir
     from calibre.debug import run_calibre_debug
-    fd, logpath = tempfile.mkstemp('.txt')
-    os.close(fd)
+    logpath = os.path.join(cache_dir(), 'calibre-debug-log.txt')
     run_calibre_debug(
         '--gui-debug', logpath, stdout=open(logpath, 'wb'),
         stderr=subprocess.STDOUT, stdin=open(os.devnull, 'rb'))
@@ -433,7 +433,7 @@ def run_gui_(opts, args, app, gui_debug=None):
             winutil.prepare_for_restart()
             with open(debugfile, 'r+b') as f:
                 raw = f.read()
-                raw = re.sub(b'(?<!\r)\n', b'\r\n', raw)
+                raw = re.sub(br'(?<!\r)\n', b'\r\n', raw)
                 f.seek(0)
                 f.truncate()
                 f.write(raw)
@@ -575,7 +575,7 @@ if __name__ == '__main__':
             with open(logfile) as f:
                 log = f.read().decode('utf-8', 'ignore')
             d = QErrorMessage()
-            d.showMessage(('<b>Error:</b>%s<br><b>Traceback:</b><br>'
-                '%s<b>Log:</b><br>%s')%(str(err),
+            d.showMessage(('<b>Error:</b>{}<br><b>Traceback:</b><br>'
+                '{}<b>Log:</b><br>{}').format(str(err),
                     str(tb).replace('\n', '<br>'),
                     log.replace('\n', '<br>')))

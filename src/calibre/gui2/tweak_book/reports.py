@@ -7,6 +7,7 @@ __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 import os
 import textwrap
 import time
+import unicodedata
 from collections import defaultdict
 from contextlib import suppress
 from csv import writer as csv_writer
@@ -260,8 +261,8 @@ class FilesView(QTableView):
 
 # }}}
 
-# Files {{{
 
+# Files {{{
 
 class FilesModel(FileCollection):
 
@@ -308,7 +309,7 @@ class FilesModel(FileCollection):
                 return entry.basename
             if col == 2:
                 sz = entry.size / 1024.
-                return '%.2f ' % sz
+                return f'{sz:.2f} '
             if col == 3:
                 return self.CATEGORY_NAMES.get(entry.category)
             if col == 4:
@@ -363,8 +364,8 @@ class FilesWidget(QWidget):
 
 # }}}
 
-# Jump {{{
 
+# Jump {{{
 
 def jump_to_location(loc):
     from calibre.gui2.tweak_book.boss import get_boss
@@ -390,7 +391,7 @@ def jump_to_location(loc):
 class Jump:
 
     def __init__(self):
-        self.pos_map = defaultdict(lambda : -1)
+        self.pos_map = defaultdict(lambda: -1)
 
     def clear(self):
         self.pos_map.clear()
@@ -402,10 +403,11 @@ class Jump:
             jump_to_location(loc)
 
 
-jump = Jump()  # }}}
+jump = Jump()
+# }}}
+
 
 # Images {{{
-
 
 class ImagesDelegate(QStyledItemDelegate):
 
@@ -499,11 +501,11 @@ class ImagesModel(FileCollection):
                 return entry.basename
             if col == 1:
                 sz = entry.size / 1024.
-                return ('%.2f' % sz if int(sz) != sz else str(sz))
+                return (f'{sz:.2f}' if int(sz) != sz else str(sz))
             if col == 2:
                 return str(len(entry.usage))
             if col == 3:
-                return '%d x %d' % (entry.width, entry.height)
+                return f'{entry.width} x {entry.height}'
         elif role == Qt.ItemDataRole.UserRole:
             try:
                 return self.files[index.row()]
@@ -563,8 +565,8 @@ class ImagesWidget(QWidget):
         self.files.save_table('image-files-table')
 # }}}
 
-# Links {{{
 
+# Links {{{
 
 class LinksModel(FileCollection):
 
@@ -727,8 +729,8 @@ class LinksWidget(QWidget):
         save_state('links-view-splitter', bytearray(self.splitter.saveState()))
 # }}}
 
-# Words {{{
 
+# Words {{{
 
 class WordsModel(FileCollection):
 
@@ -769,7 +771,7 @@ class WordsModel(FileCollection):
             if col == 1:
                 ans = calibre_langcode_to_name(canonicalize_lang(entry.locale.langcode)) or ''
                 if entry.locale.countrycode:
-                    ans += ' (%s)' % entry.locale.countrycode
+                    ans += f' ({entry.locale.countrycode})'
                 return ans
             if col == 2:
                 return str(len(entry.usage))
@@ -827,8 +829,8 @@ class WordsWidget(QWidget):
         self.words.save_table('words-table')
 # }}}
 
-# Characters {{{
 
+# Characters {{{
 
 class CharsModel(FileCollection):
 
@@ -905,7 +907,8 @@ class CharsWidget(QWidget):
     def __call__(self, data):
         self.model(data)
         self.chars.resize_rows()
-        self.summary.setText(''.join(self.model.all_chars))
+        c = unicodedata.category
+        self.summary.setText(''.join(sorted(ch for ch in self.model.all_chars if c(ch) not in ('Zs', 'Cc'))))
         self.filter_edit.clear()
 
     def double_clicked(self, index):
@@ -946,8 +949,8 @@ class CharsWidget(QWidget):
 
 # }}}
 
-# CSS {{{
 
+# CSS {{{
 
 class CSSRulesModel(QAbstractItemModel):
 
@@ -1195,8 +1198,8 @@ class CSSWidget(QWidget):
 
 # }}}
 
-# Classes {{{
 
+# Classes {{{
 
 class ClassesModel(CSSRulesModel):
 
@@ -1330,8 +1333,8 @@ class ClassesWidget(CSSWidget):
 
 # }}}
 
-# Wrapper UI {{{
 
+# Wrapper UI {{{
 
 class ReportsWidget(QWidget):
 
@@ -1401,7 +1404,7 @@ class ReportsWidget(QWidget):
             self.stack.widget(i)(data)
             if DEBUG:
                 category = self.reports.item(i).data(Qt.ItemDataRole.DisplayRole)
-                print('Widget time for %12s: %.2fs seconds' % (category, time.time() - st))
+                print(f'Widget time for {category:12}: {time.time() - st:.2f}s seconds')
 
     def save(self):
         save_state('splitter-state', bytearray(self.splitter.saveState()))
@@ -1417,7 +1420,7 @@ class ReportsWidget(QWidget):
                 'Export of %s data is not supported') % category, show=True)
         data = w.to_csv()
         fname = choose_save_file(self, 'report-csv-export', _('Choose a filename for the data'), filters=[
-            (_('CSV files'), ['csv'])], all_files=False, initial_filename='%s.csv' % category)
+            (_('CSV files'), ['csv'])], all_files=False, initial_filename=f'{category}.csv')
         if fname:
             with open(fname, 'wb') as f:
                 f.write(as_bytes(data))
@@ -1503,7 +1506,7 @@ class Reports(Dialog):
         data, timing = data
         if DEBUG:
             for x, t in sorted(iteritems(timing), key=itemgetter(1)):
-                print('Time for %6s data: %.3f seconds' % (x, t))
+                print(f'Time for {x:6} data: {t:.3f} seconds')
         self.reports(data)
 
     def accept(self):

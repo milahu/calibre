@@ -83,7 +83,7 @@ class Tablet(Device):
 class Kindle(Device):
 
     output_profile = 'kindle'
-    output_format  = 'MOBI'
+    output_format  = 'AZW3'
     untranslated_name, name = gettext('Kindle Basic (all models)')
     manufacturer = 'Amazon'
     id = 'kindle'
@@ -110,7 +110,7 @@ class JetBookMini(Device):
 class KindleDX(Kindle):
 
     output_profile = 'kindle_dx'
-    output_format  = 'MOBI'
+    output_format  = 'AZW3'
     untranslated_name = name = 'Kindle DX'
     id = 'kindledx'
 
@@ -623,8 +623,8 @@ class DevicePage(QWizardPage, DeviceUI):
     def __init__(self):
         QWizardPage.__init__(self)
         self.setupUi(self)
-        self.registerField("manufacturer", self.manufacturer_view)
-        self.registerField("device", self.device_view)
+        self.registerField('manufacturer', self.manufacturer_view)
+        self.registerField('device', self.device_view)
 
     def initializePage(self):
         self.label.setText(_('Choose your e-book device. If your device is'
@@ -751,9 +751,9 @@ class LibraryPage(QWizardPage, LibraryUI):
         try:
             lang = prefs['language'].lower()[:2]
             metadata_plugins = {
-                    'zh' : ('Douban Books',),
-                    'fr' : ('Nicebooks',),
-                    'ru' : ('OZON.ru',),
+                    'zh': ('Douban Books',),
+                    'fr': ('Nicebooks',),
+                    'ru': ('OZON.ru',),
             }.get(lang, [])
             from calibre.customize.ui import enable_plugin
             for name in metadata_plugins:
@@ -862,7 +862,7 @@ class LibraryPage(QWizardPage, LibraryUI):
                 os.rmdir(dln)
         except Exception:
             pass
-        # dont leave behind any empty dirs
+        # don't leave behind any empty dirs
         for x in self.made_dirs:
             with suppress(OSError):
                 os.rmdir(x)
@@ -950,7 +950,7 @@ class Wizard(QWizard):
         QWizard.accept(self)
 
     def set_finish_text(self, *args):
-        bt = str("<em>" + self.buttonText(QWizard.WizardButton.FinishButton) + "</em>").replace('&', '')
+        bt = str('<em>' + self.buttonText(QWizard.WizardButton.FinishButton) + '</em>').replace('&', '')
         t = str(self.finish_page.finish_text.text())
         if '%s' in t:
             self.finish_page.finish_text.setText(t%bt)

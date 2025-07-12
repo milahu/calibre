@@ -110,7 +110,7 @@ def decoration_for_style(palette, style, icon_size, device_pixel_ratio, is_dark)
             q = builtin_decorations.get(which)
             if q is not None:
                 style = q
-        sz = int(math.ceil(icon_size * device_pixel_ratio))
+        sz = math.ceil(icon_size * device_pixel_ratio)
         canvas = QImage(sz, sz, QImage.Format.Format_ARGB32)
         canvas.fill(Qt.GlobalColor.transparent)
         canvas.setDevicePixelRatio(device_pixel_ratio)
@@ -336,14 +336,15 @@ class Highlights(QTreeWidget):
 
         for h in self.sorted_highlights(highlights):
             tfam = tuple(h.get('toc_family_titles') or ())
+            spine_index = h.get('spine_index', -1)
             if tfam:
                 tsec = tfam[0]
                 lsec = tfam[-1]
-                key = tfam
+                key = (spine_index,) + tfam
             else:
                 tsec = h.get('top_level_section_title')
                 lsec = h.get('lowest_level_section_title')
-                key = (tsec or '', lsec or '')
+                key = (spine_index, tsec or '', lsec or '')
             short_title = lsec or tsec or _('Unknown')
             section = {
                 'title': short_title, 'tfam': tfam, 'tsec': tsec, 'lsec': lsec, 'items': [], 'tooltip': tooltip_for(tfam), 'key': key,
@@ -356,7 +357,7 @@ class Highlights(QTreeWidget):
                 for key in keys:
                     section = smap[key]
                     if section['tfam']:
-                        section['title'] = ' ➤ '.join(tfam)
+                        section['title'] = ' ➤ '.join(section['tfam'])
                     elif section['tsec'] and section['lsec']:
                         section['title'] = ' ➤ '.join((section['tsec'], section['lsec']))
 
@@ -441,7 +442,7 @@ class Highlights(QTreeWidget):
         else:
             if cr < 0:
                 cr = -1
-            indices = chain(range(cr + 1, count), range(0, cr + 1))
+            indices = chain(range(cr + 1, count), range(cr + 1))
         for i in indices:
             h = items[i].data(0, highlight_role)
             if pat.search(h['highlighted_text']) is not None or pat.search(h.get('notes') or '') is not None:

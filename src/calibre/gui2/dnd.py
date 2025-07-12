@@ -11,7 +11,7 @@ import re
 from contextlib import suppress
 from threading import Thread
 
-from qt.core import QDialog, QDialogButtonBox, QImageReader, QLabel, QPixmap, QProgressBar, Qt, QTimer, QUrl, QVBoxLayout
+from qt.core import QDialog, QDialogButtonBox, QImageReader, QLabel, QMimeData, QPixmap, QProgressBar, Qt, QTimer, QUrl, QVBoxLayout
 
 from calibre import as_unicode, browser, prints
 from calibre.constants import DEBUG, iswindows
@@ -133,7 +133,7 @@ class DownloadDialog(QDialog):  # {{{
 
 def dnd_has_image(md):
     # Chromium puts image data into application/octet-stream
-    return md.hasImage() or md.hasFormat('application/octet-stream') and what(None, bytes(md.data('application/octet-stream'))) in image_extensions()
+    return md.hasImage() or (md.hasFormat('application/octet-stream') and what(None, bytes(md.data('application/octet-stream'))) in image_extensions())
 
 
 def data_as_string(f, md):
@@ -386,3 +386,8 @@ def get_firefox_rurl(md, exts):
 
 def has_firefox_ext(md, exts):
     return bool(get_firefox_rurl(md, exts)[0])
+
+
+def set_urls_from_local_file_paths(md: QMimeData, *paths: str) -> QMimeData:
+    md.setUrls(list(map(QUrl.fromLocalFile, paths)))
+    return md

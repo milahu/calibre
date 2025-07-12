@@ -42,7 +42,7 @@ from calibre.gui2.viewer import get_boss, get_current_book_data, performance_mon
 from calibre.gui2.viewer.annotations import AnnotationsSaveWorker, annotations_dir, parse_annotations
 from calibre.gui2.viewer.bookmarks import BookmarkManager
 from calibre.gui2.viewer.config import get_session_pref, load_reading_rates, save_reading_rates, vprefs
-from calibre.gui2.viewer.convert_book import clean_running_workers, prepare_book
+from calibre.gui2.viewer.convert_book import prepare_book
 from calibre.gui2.viewer.highlights import HighlightsPanel
 from calibre.gui2.viewer.integration import get_book_library_details, load_annotations_map_from_library
 from calibre.gui2.viewer.lookup import Lookup
@@ -75,8 +75,8 @@ def dock_defs():
     def d(title, name, area, allowed=Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea):
         ans[name] = Dock(name + '-dock', title, area, allowed)
 
-    d(_('Table of Contents'), 'toc', Qt.DockWidgetArea.LeftDockWidgetArea),
-    d(_('Lookup'), 'lookup', Qt.DockWidgetArea.RightDockWidgetArea),
+    d(_('Table of Contents'), 'toc', Qt.DockWidgetArea.LeftDockWidgetArea)
+    d(_('Lookup'), 'lookup', Qt.DockWidgetArea.RightDockWidgetArea)
     d(_('Bookmarks'), 'bookmarks', Qt.DockWidgetArea.RightDockWidgetArea)
     d(_('Search'), 'search', Qt.DockWidgetArea.LeftDockWidgetArea)
     d(_('Inspector'), 'inspector', Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.AllDockWidgetAreas)
@@ -420,21 +420,21 @@ class EbookViewer(MainWindow):
                 self.image_popup()
             else:
                 error_dialog(self, _('Invalid image'), _(
-                    "Failed to load the image {}").format(name), show=True)
+                    'Failed to load the image {}').format(name), show=True)
         else:
             error_dialog(self, _('Image not found'), _(
-                    "Failed to find the image {}").format(name), show=True)
+                    'Failed to find the image {}').format(name), show=True)
 
     def copy_image(self, name):
         path = get_path_for_name(name)
         if not path:
             return error_dialog(self, _('Image not found'), _(
-                "Failed to find the image {}").format(name), show=True)
+                'Failed to find the image {}').format(name), show=True)
         try:
             img = image_from_path(path)
         except Exception:
             return error_dialog(self, _('Invalid image'), _(
-                "Failed to load the image {}").format(name), show=True)
+                'Failed to load the image {}').format(name), show=True)
         url = QUrl.fromLocalFile(path)
         md = QMimeData()
         md.setImageData(img)
@@ -811,6 +811,9 @@ class EbookViewer(MainWindow):
             self.cfi_changed(cfi)
         self.force_close()
 
+    def request_close(self):
+        self.close()
+
     def closeEvent(self, ev):
         if self.shutdown_done:
             return
@@ -834,12 +837,11 @@ class EbookViewer(MainWindow):
         except Exception:
             import traceback
             traceback.print_exc()
-        clean_running_workers()
         self.shutdown_done = True
         return MainWindow.closeEvent(self, ev)
     # }}}
 
-    # Auto-hide mouse cursor  {{{
+    # Auto-hide mouse cursor {{{
     def setup_mouse_auto_hide(self):
         QApplication.instance().installEventFilter(self)
         self.cursor_hidden = False

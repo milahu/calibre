@@ -134,7 +134,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         except Exception:
             pass
 
-        self.notes_utilities = NotesUtilities(self.table, "authors",
+        self.notes_utilities = NotesUtilities(self.table, 'authors',
                   lambda item: int(self.table.item(item.row(), AUTHOR_COLUMN).data(Qt.ItemDataRole.UserRole)))
 
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setText(_('&OK'))
@@ -183,18 +183,20 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         ac = le.findChild(QAction, QT_HIDDEN_CLEAR_ACTION)
         if ac is not None:
             ac.triggered.connect(self.clear_find)
-        le.returnPressed.connect(self.do_find)
+        le.returnPressed.connect(partial(self.do_find, inverted=False))
         self.find_box.editTextChanged.connect(self.find_text_changed)
-        self.find_button.clicked.connect(self.do_find)
+        self.find_button.clicked.connect(partial(self.do_find, inverted=False))
         self.find_button.setDefault(True)
+        self.find_inverted_button.clicked.connect(partial(self.do_find, inverted=True))
 
         self.filter_box.initialize('manage_authors_filter')
         le = self.filter_box.lineEdit()
         ac = le.findChild(QAction, QT_HIDDEN_CLEAR_ACTION)
         if ac is not None:
             ac.triggered.connect(self.clear_filter)
-        self.filter_box.lineEdit().returnPressed.connect(self.do_filter)
-        self.filter_button.clicked.connect(self.do_filter)
+        self.filter_box.lineEdit().returnPressed.connect(partial(self.do_filter, inverted=False))
+        self.filter_button.clicked.connect(partial(self.do_filter, inverted=False))
+        self.filter_inverted_button.clicked.connect(partial(self.do_filter, inverted=True))
 
         self.not_found_label = l = QLabel(self.table)
         l.setFrameStyle(QFrame.Shape.StyledPanel)
@@ -212,6 +214,8 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
+        self.inverted_filter = False
+
         # Fetch the data
         self.authors = {}
         self.original_authors = {}
@@ -222,7 +226,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
             name = v['name']
             name = name.replace('|', ',')
             self.completion_data.append(name)
-            vals = {'name': name, 'sort': v['sort'], 'link': v['link'], 'count':counts[id_]}
+            vals = {'name': name, 'sort': v['sort'], 'link': v['link'], 'count':counts.get(id_, 0)}
             self.authors[id_] = vals
             self.original_authors[id_] = vals.copy()
 
@@ -274,7 +278,8 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         self.filter_box.setText('')
         self.show_table(None, None, None, False)
 
-    def do_filter(self):
+    def do_filter(self, inverted):
+        self.inverted_filter = inverted
         self.show_table(None, None, None, False)
 
     def show_table(self, id_to_select, select_sort, select_link, is_first_letter):
@@ -282,7 +287,8 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         filter_text = icu_lower(str(self.filter_box.text()))
         if filter_text:
             auts_to_show = {id_ for id_ in auts_to_show
-                if self.string_contains(filter_text, icu_lower(self.authors[id_]['name']))}
+                if self.string_contains(filter_text,
+                                        icu_lower(self.authors[id_]['name'])) != self.inverted_filter}
 
         self.table.blockSignals(True)
         self.table.clear()
@@ -317,7 +323,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
             self.notes_utilities.set_icon(note_item, id_, id_ in all_items_that_have_notes)
             row += 1
 
-        headers = { # this depends on the dict being ordered, which is true from python 3.7
+        headers = {  # this depends on the dict being ordered, which is true from python 3.7
             _('Author'): _('Name of the author'),
             _('Author sort'): _('Value used to sort this author'),
             _('Count'): _('Count of books with this author'),
@@ -346,7 +352,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         select_item = None
         if id_to_select:
             use_as = tweaks['categories_use_field_for_author_name'] == 'author_sort'
-            for row in range(0, len(auts_to_show)):
+            for row in range(len(auts_to_show)):
                 if is_first_letter:
                     item_txt = str(self.table.item(row, AUTHOR_SORT_COLUMN).text() if use_as
                                                 else self.table.item(row, AUTHOR_COLUMN).text())
@@ -382,7 +388,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
 
     def save_state(self):
         self.table_column_widths = []
-        for c in range(0, self.table.columnCount()):
+        for c in range(self.table.columnCount()):
             self.table_column_widths.append(self.table.columnWidth(c))
         gprefs['general_category_editor_row_height'] = self.table.verticalHeader().sectionSize(0)
         gprefs['manage_authors_table_widths'] = self.table_column_widths
@@ -390,7 +396,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
 
     def table_column_resized(self, col, old, new):
         self.table_column_widths = []
-        for c in range(0, self.table.columnCount()):
+        for c in range(self.table.columnCount()):
             self.table_column_widths.append(self.table.columnWidth(c))
 
     def resizeEvent(self, *args):
@@ -404,7 +410,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
             # widths will be remembered
             w = self.table.width() - 25 - self.table.verticalHeader().width()
             w //= self.table.columnCount()
-            for c in range(0, self.table.columnCount()):
+            for c in range(self.table.columnCount()):
                 self.table.setColumnWidth(c, w)
         self.save_state()
 
@@ -462,11 +468,13 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
                     ca = m.addAction(_('Copy to author sort'))
                     ca.triggered.connect(self.copy_au_to_aus)
                     m.addSeparator()
-                    ca = m.addAction(QIcon.cached_icon('lt.png'), _("Show books by author in book list"))
+                    ca = m.addAction(QIcon.cached_icon('lt.png'), _('Show books by author in book list'))
                     ca.triggered.connect(self.search_in_book_list)
                 else:
                     ca = m.addAction(_('Copy to author'))
                     ca.triggered.connect(self.copy_aus_to_au)
+                    ca = m.addAction(_('Recalculate sort from author'))
+                    ca.triggered.connect(self.do_recalc_one_author_sort)
                 m.addSeparator()
                 m.addMenu(case_menu)
         m.exec(self.table.viewport().mapToGlobal(point))
@@ -480,8 +488,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
     def search_in_book_list(self):
         from calibre.gui2.ui import get_gui
         row = self.context_item.row()
-        get_gui().search.set_search_string('authors:="%s"' %
-                           str(self.table.item(row, AUTHOR_COLUMN).text()).replace(r'"', r'\"'))
+        get_gui().search.set_search_string('authors:="{}"'.format(str(self.table.item(row, AUTHOR_COLUMN).text()).replace(r'"', r'\"')))
 
     def copy_to_clipboard(self):
         cb = QApplication.clipboard()
@@ -529,7 +536,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
     def find_text_changed(self):
         self.start_find_pos = -1
 
-    def do_find(self):
+    def do_find(self, inverted=False):
         self.not_found_label.setVisible(False)
         # For some reason the button box keeps stealing the RETURN shortcut.
         # Steal it back
@@ -541,13 +548,13 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
         st = icu_lower(str(self.find_box.currentText()))
         if not st:
             return
-        for _ in range(0, self.table.rowCount()*2):
+        for _ in range(self.table.rowCount()*2):
             self.start_find_pos = (self.start_find_pos + 1) % (self.table.rowCount()*2)
             r = (self.start_find_pos//2) % self.table.rowCount()
             c = self.start_find_pos % 2
             item = self.table.item(r, c)
             text = icu_lower(str(item.text()))
-            if st in text:
+            if (st in text) != inverted:
                 self.table.setCurrentItem(item)
                 self.table.setFocus(Qt.FocusReason.OtherFocusReason)
                 return
@@ -598,7 +605,7 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
 
     def do_recalc_author_sort(self):
         with self.no_cell_changed():
-            for row in range(0,self.table.rowCount()):
+            for row in range(self.table.rowCount()):
                 item_aut = self.table.item(row, AUTHOR_COLUMN)
                 id_ = int(item_aut.data(Qt.ItemDataRole.UserRole))
                 aut  = str(item_aut.text()).strip()
@@ -610,9 +617,15 @@ class EditAuthorsDialog(QDialog, Ui_EditAuthorsDialog):
                 self.set_icon(item_aus, id_)
             self.table.setFocus(Qt.FocusReason.OtherFocusReason)
 
+    def do_recalc_one_author_sort(self):
+        row = self.context_item.row()
+        aut = str(self.table.item(row, AUTHOR_COLUMN).text()).strip()
+        dest = self.table.item(row, AUTHOR_SORT_COLUMN)
+        dest.setText(str(author_to_author_sort(aut)).rstrip(','))
+
     def do_auth_sort_to_author(self):
         with self.no_cell_changed():
-            for row in range(0,self.table.rowCount()):
+            for row in range(self.table.rowCount()):
                 aus  = str(self.table.item(row, AUTHOR_SORT_COLUMN).text()).strip()
                 item_aut = self.table.item(row, AUTHOR_COLUMN)
                 id_ = int(item_aut.data(Qt.ItemDataRole.UserRole))

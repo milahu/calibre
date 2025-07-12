@@ -60,7 +60,7 @@ class NytTech(BasicNewsRecipe):
             if c.lower() == 'yes':
                 self.compress_news_images = True
 
-    extra_css = """
+    extra_css = '''
         .byl, .time { font-size:small; color:#202020; }
         .cap { font-size:small; text-align:center; }
         .cred { font-style:italic; font-size:small; }
@@ -68,7 +68,7 @@ class NytTech(BasicNewsRecipe):
         .sc { font-variant: small-caps; }
         .lbl { font-size:small; color:#404040; }
         img { display:block; margin:0 auto; }
-    """
+    '''
 
     @property
     def nyt_parser(self):
@@ -101,14 +101,8 @@ class NytTech(BasicNewsRecipe):
         return self.nyt_parser.extract_html(self.index_to_soup(raw_html), url)
 
     def get_browser(self, *args, **kwargs):
-        kwargs['user_agent'] = (
-            'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-        )
+        kwargs['user_agent'] = 'User-Agent: Mozilla/5.0 (compatible; archive.org_bot; Wayback Machine Live Record; +http://archive.org/details/archive.org_bot)'
         br = BasicNewsRecipe.get_browser(self, *args, **kwargs)
-        br.addheaders += [
-            ('Referer', 'https://www.google.com/'),
-            ('X-Forwarded-For', '66.249.66.1'),
-        ]
         return br
 
     def preprocess_html(self, soup):

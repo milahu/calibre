@@ -55,7 +55,7 @@ def exe_path(exe_name):
     e = exe_name
     if iswindows:
         return os.path.join(os.path.dirname(sys.executable),
-                e+'.exe' if isfrozen else 'Scripts\\%s.exe'%e)
+                e+'.exe' if isfrozen else f'Scripts\\{e}.exe')
     if ismacos:
         return os.path.join(sys.executables_location, e)
 
@@ -67,6 +67,20 @@ def exe_path(exe_name):
         if os.access(c, os.X_OK):
             return c
     return e
+
+
+def headless_exe_path(exe_name='calibre-parallel'):
+    if ismacos and not hasattr(sys, 'running_from_setup'):
+        return os.path.join(macos_headless_bundle_path(), exe_name)
+    return exe_path(exe_name)
+
+
+def windows_creationflags_for_worker_process(priority: str = 'normal') -> int:
+    return {
+        'high'  : subprocess.HIGH_PRIORITY_CLASS,
+        'normal': subprocess.NORMAL_PRIORITY_CLASS,
+        'low'   : subprocess.IDLE_PRIORITY_CLASS
+    }[priority] | subprocess.DETACHED_PROCESS
 
 
 class Worker:
@@ -86,9 +100,7 @@ class Worker:
 
     @property
     def executable(self):
-        if ismacos and not hasattr(sys, 'running_from_setup'):
-            return os.path.join(macos_headless_bundle_path(), self.exe_name)
-        return exe_path(self.exe_name)
+        return headless_exe_path(self.exe_name)
 
     @property
     def gui_executable(self):
@@ -174,20 +186,16 @@ class Worker:
             priority = prefs['worker_process_priority']
         cmd = [exe] if isinstance(exe, string_or_bytes) else exe
         args = {
-                'env' : env,
-                'cwd' : _cwd,
+                'env': env,
+                'cwd': _cwd,
                 }
         if iswindows:
-            priority = {
-                    'high'   : subprocess.HIGH_PRIORITY_CLASS,
-                    'normal' : subprocess.NORMAL_PRIORITY_CLASS,
-                    'low'    : subprocess.IDLE_PRIORITY_CLASS}[priority]
-            args['creationflags'] = subprocess.CREATE_NO_WINDOW|priority
+            args['creationflags'] = windows_creationflags_for_worker_process(priority)
         else:
             niceness = {
-                    'normal' : 0,
-                    'low'    : 10,
-                    'high'   : 20,
+                    'normal': 0,
+                    'low'   : 10,
+                    'high'  : 20,
             }[priority]
             args['env']['CALIBRE_WORKER_NICENESS'] = str(niceness)
         ret = None

@@ -125,12 +125,12 @@ class DBUSNotifier(Notifier):
             self.address, 'AddNotification', 'sa{sv}', (
                 str(replaces_id or 0),
                 {
-                "title": ('s', summary),
-                "body": ('s', body),
-                "icon": (
+                'title': ('s', summary),
+                'body': ('s', body),
+                'icon': (
                     '(sv)',
                     (
-                        "bytes",
+                        'bytes',
                         ('ay', icon(data=True))
                     )
                 ),
@@ -253,7 +253,7 @@ def get_notifier(systray=None):
             if not ans.ok:
                 ans = DummyNotifier()
         else:
-            # We dont use Qt's systray based notifier as it uses Growl and is
+            # We don't use Qt's systray based notifier as it uses Growl and is
             # broken with different versions of Growl
             ans = DummyNotifier()
     elif iswindows:
@@ -275,7 +275,8 @@ def hello():
 def develop_win():
     from calibre_extensions.wintoast import initialize_toast, notify
     initialize_toast(__appname__, MAIN_APP_UID)
-    notify("calibre notification", "hello world", icon())
+    notify('calibre notification', 'hello world', icon())
+
 
 if __name__ == '__main__':
     hello()

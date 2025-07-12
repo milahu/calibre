@@ -189,6 +189,7 @@ The following functions are usable in Single Function Mode because their first p
 * :ffsum:`cmp`
 * :ffsum:`contains`
 * :ffsum:`date_arithmetic`
+* :ffsum:`encode_for_url`
 * :ffsum:`floor`
 * :ffsum:`format_date`
 * :ffsum:`format_number`
@@ -292,7 +293,7 @@ Notes:
 * In a logical context, any non-empty value is ``True``
 * In a logical context, the empty value is ``False``
 * Strings and numbers can be used interchangeably. For example, ``10`` and ``'10'`` are the same thing.
-* Comments are lines starting with a '#' character. Comments beginning later in a line are not supported.
+* Comments are lines starting with blanks or tabs then a '#' character.
 
 **Operator precedence**
 
@@ -410,9 +411,9 @@ Relational operators return ``'1'`` if the comparison is true, otherwise the emp
 There are two forms of relational operators: string comparisons and numeric comparisons.
 
 String comparisons do case-insensitive string comparison using lexical order. The supported string comparison operators are ``==``, ``!=``, ``<``, ``<=``, ``>``, ``>=``, ``in``, ``inlist``, and ``inlist_field``.
-For the ``in`` operator, the result of the left hand expression is interpreted as a regular expression pattern. The ``in`` operator is True if the value of left-hand regular expression matches the value of the right hand expression.
+For the ``in``, ``inlist``, and ``inlist_field`` operators, the result of the left hand expression is interpreted as a regular expression pattern. They are true if the value of left-hand regular expression matches the value of the right hand expression. The regular expressions are case-insensitive.
 
-The ``inlist`` operator is true if the left hand regular expression matches any one of the items in the right hand list where the items in the list are separated by commas. The ``inlist_field`` operator is true if the left hand regular expression matches any of the items in the field (column) named by the right hand expression, using the separator defined for the field. NB: the ``inlist_field`` operator requires the right hand expression to evaluate to a field name, while the ``inlist`` operator requires the right hand expression to evaluate to a string containing a comma-separated list. Because of this difference, ``inlist_field`` is substantially faster than ``inlist`` because no string conversions or list constructions are done. The regular expressions are case-insensitive.
+The ``inlist`` operator is true if the left hand regular expression matches any one of the items in the right hand list where the items in the list are separated by commas. The ``inlist_field`` operator is true if the left hand regular expression matches any of the items in the field (column) named by the right hand expression, using the separator defined for the field. NB: the ``inlist_field`` operator requires the right hand expression to evaluate to a field name, while the ``inlist`` operator requires the right hand expression to evaluate to a string containing a comma-separated list. Because of this difference, ``inlist_field`` is substantially faster than ``inlist`` because no string conversions or list constructions are done.
 
 The numeric comparison operators are ``==#``, ``!=#``, ``<#``, ``<=#``, ``>#``, ``>=#``. The left and right expressions must evaluate to numeric values with two exceptions: both the string value "None" (undefined field) and the empty string evaluate to the value zero.
 
@@ -451,7 +452,7 @@ More complex programs in template expressions - Template Program Mode
 Example: assume you want a template to show the series for a book if it has one, otherwise show
 the value of a custom field #genre. You cannot do this in the :ref:`Single Function Mode <single_mode>` because you cannot make reference to another metadata field within a template expression. In `TPM` you can, as the following expression demonstrates::
 
-    {series_index:0>7.1f:'ifempty($, -5)'}
+    {series:'ifempty($, $#genre)'}
 
 The example shows several things:
 
@@ -459,14 +460,14 @@ The example shows several things:
 
   If the template contains a prefix and suffix, the expression ends with ``'|`` where the ``|`` is the delimiter for the prefix. Example::
 
-    {series_index:0>7.1f:'ifempty($, -5)'|prefix | suffix}
+    {series:'ifempty($, $#genre)'|prefix | suffix}
 
 * Functions must be given all their arguments. For example, the standard built-in functions must be given the initial parameter ``value``.
-* The variable ``$`` is usable as the ``value`` argument and stands for the value of the field named in the template, ``series_index`` in this case.
+* The variable ``$`` is usable as the ``value`` argument and stands for the value of the field named in the template, ``series`` in this case.
 * white space is ignored and can be used anywhere within the expression.
 * constant strings are enclosed in matching quotes, either ``'`` or ``"``.
 
-In `TPM`, using ``{`` and ``}`` characters in string literals can lead to errors or unexpected results because they confuse the template processor. It tries to treat them as template expression boundaries, not characters. In some but not all cases you can replace a ``{`` with ``[[`` and a ``}`` with `]]`. Generally, if your program contains ``{`` and ``}`` characters then you should use `General Program Mode`.
+In `TPM`, using ``{`` and ``}`` characters in string literals can lead to errors or unexpected results because they confuse the template processor. It tries to treat them as template expression boundaries, not characters. In some but not all cases you can replace a ``{`` with ``[[`` and a ``}`` with `]]`. Advice: if your program contains ``{`` and ``}`` characters then you should use `General Program Mode`.
 
 .. _python_mode:
 
@@ -531,6 +532,139 @@ The output in :guilabel:`Book details` looks like this:
     :align: center
     :alt: E-book conversion dialog
     :class: half-width-img
+
+.. _templates_and_urls:
+
+Templates and URLs
+----------------------
+
+You can use templates to construct URLs. Two cases are described here:
+
+* Custom column :guilabel:`Book details` search URLs
+* The calibre URL scheme
+
+**Custom column book details search URLs**
+
+When you create a custom column you can provide a URL to be used in :guilabel:`Book details` using a template. For example, if you have a custom column for `Translators` you can define a URL to take you to a site for translators. Book details search URLs can be provided for `Text`, `Enumerated`, `Series`, and `Column built from other column` column types.
+
+When an item with a `search template` is clicked in :guilabel:`Book details` the template is evaluated. It is provided the normal book metadata. It is also provided three additional fields:
+
+* ``item_value``: the value of the clicked item.
+* ``item_value_quoted``: the value of clicked item, URL-encoded. Special characters are escaped to make them valid in URLs and spaces are replaced by ``'+'`` (plus) signs.
+* ``item_value_no_plus``: the value of clicked item, URL-encoded. Special characters are escaped to make them valid in URLs and spaces are replaced by the ``%20``, not plus.
+
+There are several ways to construct the URL. The following use Wikipedia as an example.
+
+The simplest is a basic template::
+
+  https://en.wikipedia.org/w/index.php?search={item_value_encoded}
+
+In some cases you might want to do more processing. There are four template functions you can use, depending on the complexity of the processing.
+
+* :ffsum:`make_url`
+* :ffsum:`make_url_extended`
+* :ffsum:`query_string`
+* :ffsum:`encode_for_url`
+
+For example, assume you have a custom column `Translators` (``#translators``) where the names are `Last name, First name`. You might need to convert the name to `First name Last name` when creating the URL. You can use the :ref:`ff_make_url` function to do this::
+
+  program: make_url('https://en.wikipedia.org/w/index.php', 'search', swap_around_comma($item_value))
+
+If we assume that the translator's name is `Boy-Żeleński, Tadeusz` then the above template produces the link::
+
+  https://en.wikipedia.org/w/index.php?search=Tadeusz+Boy-%C5%BBele%C5%84ski
+
+Note that the person's first name is now first, the space is now a plus, and that the non-English characters in the last name are URL-encoded.
+
+The functions :ref:`ff_make_url_extended`, :ref:`ff_query_string`, and :ref:`ff_encode_for_url` might be useful depending upon any additional processing complexity.
+
+**The calibre URL scheme**
+
+Calibre supports several different URLs to navigate your calibre libraries. This section shows how to use templates
+to construct some of the URLs. See :doc:`url_scheme` for details on the URLs available.
+
+* Switch to a specific library. The syntax of this URL is::
+
+    calibre://switch-library/Library_Name
+
+  ``Library_Name`` must be replaced with the name of the calibre library you wish to open. The library name is
+  shown in the title bar of the window. It is a simple name, not the file path to the library. You must spell
+  it as shown in the title bar, including letter case. The character ``_``
+  (underscore) stands for the current library. If the name contains any spaces or special characters then it
+  must be hex encoded using the :ref:`ff_to_hex` function, as in the following example::
+
+    program: strcat('calibre://switch-library/_hex_-', to_hex(current_library_name()))
+
+  The template generates the URL::
+
+    calibre://switch-library/_hex_-4c6962726172792e746573745f736d616c6c
+
+  You can replace the ``current_library_name()`` function with the actual name of the library, as in::
+
+    program: strcat('calibre://switch-library/_hex_-', to_hex('Library.test_small'))
+
+* Links to show books. These links select a book in the calibre library. The syntax for this URL is::
+
+    calibre://show-book/Library_Name/book_id
+
+  The ``book id`` is the numeric calibre id for the book, available to templates as ``$id``. As above,
+  the library name might need to be hex encoded. Here is an example::
+
+    program: strcat('calibre://show-book/_hex_-', to_hex(current_library_name()), '/', $id)
+
+  It produces the URL::
+
+    calibre://show-book/_hex_-4c6962726172792e746573745f736d616c6c/1353
+
+* Searching for books. These links search for books in the specified calibre library. The syntax for this URL is::
+
+    calibre://search/Library_Name?q=query
+    calibre://search/Library_Name?eq=hex_encoded_query
+
+  where `query` is any valid calibre search expression. You must hex encode any query containing spaces or special
+  characters, which generally means all of them. For example, the calibre search expression for searching for a
+  hierarchical tag beginning with 'AA' is ``tags:"=.AA"``. This template constructs a search URL for that expression::
+
+    program: strcat('calibre://search/_hex_-', to_hex(current_library_name()), '?eq=', to_hex('tags:"=.AA"'))
+
+  The resulting URL is::
+
+    calibre://search/_hex_-4c6962726172792e746573745f736d616c6c?eq=746167733a223d2e414122
+
+  Here is an example of the same URL built using the :ref:``ff_make_url_extended`` function instead of :ref:`ff_strcat`::
+
+    program: make_url_extended('calibre', '', 'search/_hex_-' & to_hex(current_library_name()),
+                               'eq', to_hex('tags:"=.AA"'))
+
+* Open a book details window on a book in some library. The syntax for this URL is::
+
+    calibre://book-details/Library_Name/book_id
+
+  An example template is::
+
+    program: strcat('calibre://book-details/_hex_-', to_hex(current_library_name()), '/', $id)
+
+  which produces the URL::
+
+     calibre://book-details/_hex_-4c6962726172792e746573745f736d616c6c/1353
+
+* Open the notes associated with an author/series/etc. The syntax of the URL is::
+
+    calibre://book-details/Library_Name/Field_Name/id_Item_Id
+    calibre://book-details/Library_Name/Field_Name/hex_Hex_Encoded_Item_Name
+
+  ``Field_Name`` is the lookup name of the field. If the field is a custom column then replace the ``#`` character
+  with an underscore (``_``). ``Item_Id`` is the internal numeric ID of the value in the field. There isn't a template
+  function that returns the ``Item_Id``, so templates will normally use the second form, ``Hex_Encoded_Item_Name``.
+  Here is a sample template that opens the note for the person ``Boy-Żeleński, Tadeusz`` in the field ``#authtest``::
+
+    program: strcat('calibre://show-note/_hex_-', to_hex(current_library_name()),
+                    '/_authtest/hex_', to_hex('Boy-Żeleński, Tadeusz'))
+
+  which produces the URL::
+
+    calibre://show-note/_hex_-4c6962726172792e746573745f736d616c6c/_authtest/hex_426f792dc5bb656c65c584736b692c205461646575737a
+
 
 Stored templates
 ----------------------------------------
@@ -629,10 +763,33 @@ User-defined Python template functions
 
 You can add your own Python functions to the template processor. Such functions can be used in any of the three template programming modes. The functions are added by going to :guilabel:`Preferences -> Advanced -> Template functions`. Instructions are shown in that dialog. Note that you can use `Python Templates` for a similar purpose. As calling user-defined functions is faster than calling a Python template, user-defined functions might be more efficient depending on the complexity of what the function or template does.
 
+Special notes for using templates in different contexts
+--------------------------------------------------------
+
+In the GUI (:guilabel:`Columns made from other columns` and :guilabel:`Template searches`):
+
+* GPM templates work as before.
+* Python templates have full access to the calibre database.
+
+In icon rules:
+
+* icon rule templates have no book data so field-based functions such as :ref:`ff_format_date_field`, :ref:`ff_list_count_field`, and :ref:`ff_check_yes_no` won't work.
+
+In the Content server:
+
+* Templates have access to the new API but not the old API (LibraryDatabase).
+* Because of the above, the following formatter functions are not guaranteed to work in GPM templates (composite columns, icon rules, etc) and should be avoided if you use the content server:
+
+  * :ref:`ff_connected_device_name`
+  * :ref:`ff_connected_device_uuid`
+  * :ref:`ff_current_virtual_library_name`
+  * :ref:`ff_is_marked`
+  * :ref:`ff_virtual_libraries`
+
 Special notes for save/send templates
 ---------------------------------------
 
-Special processing is applied when a template is used in a `save to disk` or `send to device` template. The values of the fields are cleaned, replacing characters that are special to file systems with underscores, including slashes. This means that field text cannot be used to create folders. However, slashes are not changed in prefix or suffix strings, so slashes in these strings will cause folders to be created. Because of this, you can create variable-depth folder structure.
+Special processing is applied when a template is used in a :guilabel:`Save to disk` or :guilabel:`Send to device` template. The values of the fields are cleaned, replacing characters that are special to file systems with underscores, including slashes. This means that field text cannot be used to create folders. However, slashes are not changed in prefix or suffix strings, so slashes in these strings will cause folders to be created. Because of this, you can create variable-depth folder structure.
 
 For example, assume we want the folder structure `series/series_index - title`, with the caveat that if series does not exist, then the title should be in the top folder. The template to do this is::
 
