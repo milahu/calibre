@@ -8,6 +8,7 @@ import socket
 import string
 import time
 from functools import partial
+import lxml
 
 try:
     from queue import Empty, Queue
@@ -1100,10 +1101,53 @@ class Worker(Thread):  # Get details {{{
             ul = next(self.selector(ul_selector, root=container))
         except StopIteration:
             return
-        for span in self.selector('.a-list-item', root=ul):
+        # print("ul", type(ul), ul, lxml.etree.tostring(ul))
+        for span in ul.xpath('./li/span[@class="a-list-item"]'):
             cells = span.xpath('./span')
             if len(cells) >= 2:
                 self.parse_detail_cells(mi, cells[0], cells[1])
+                continue
+            # print("span", type(span), span, lxml.etree.tostring(span))
+            children = span.xpath("./text() | ./*")
+            # print("children", children, list(map(lambda child: type(child), children)))
+            if (
+                isinstance(children[0], str) and # space
+                # key
+                isinstance(children[1], lxml.etree._Element) and children[1].tag == "span" and # ' Amazon Bestseller-Rang: '
+                # value 1
+                isinstance(children[2], str) and # ' Nr. 10.854 in Bücher ('
+                isinstance(children[3], lxml.etree._Element) and children[3].tag == "a" and # 'Siehe Top 100 in Bücher'
+                isinstance(children[4], str) and # ') '
+                # values 2 to N
+                isinstance(children[5], lxml.etree._Element) and children[5].tag == "ul" and
+                isinstance(children[6], str) # space
+            ):
+                self.parse_detail_cells_2(mi, children)
+                continue
+
+    def parse_detail_cells_2(self, mi, children):
+        # examples:
+        # https://www.amazon.de/dp/B0DV35NFKK
+        c1 = children[1]
+        name = c1.text.strip().strip(':').strip()
+        if name in {
+                'Best Sellers Rank',
+                'Amazon Bestseller-Rang', # german
+            }:
+            # print("children", type(children), children)
+            val = []
+            v = children[2].strip().split(" (")[0] # 'Nr. 10.854 in Bücher'
+            val.append(v)
+            ul = children[5]
+            for li in ul.xpath("li"):
+                v = self.totext(li).strip()
+                v = v.replace('\u200e', '').replace('\u200f', '')
+                # remove " (See Top 100 in Audible Audiobooks)"
+                v = v.split(" (See Top ")[0]
+                v = v.split(" (Siehe Top ")[0] # german
+                is_first = False
+                val.append(v)
+            mi._details[name] = val
 
     def parse_new_details(self, root, mi, non_hero):
         table = non_hero.xpath('descendant::table')[0]
