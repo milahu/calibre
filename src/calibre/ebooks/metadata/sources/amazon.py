@@ -1222,9 +1222,13 @@ class Worker(Thread):  # Get details {{{
             mi._details[name] = val
 
     def parse_best_sellers_rank(self, root, mi):
-        if "Best Sellers Rank" in mi._details:
-            # best seller rank is part of new format product details
-            return
+        for name in [
+            'Best Sellers Rank',
+            'Amazon Bestseller-Rang', # german
+        ]:
+            if name in mi._details:
+                # best seller rank is part of new format product details
+                return
         # parse old format best seller rank, add to new format product details
         result = mi._details["Best Sellers Rank"] = list()
         # first rank
