@@ -1111,6 +1111,7 @@ class Worker(Thread):  # Get details {{{
             children = span.xpath("./text() | ./*")
             # print("children", children, list(map(lambda child: type(child), children)))
             if (
+                len(children) > 5 and
                 isinstance(children[0], str) and # space
                 # key
                 isinstance(children[1], lxml.etree._Element) and children[1].tag == "span" and # ' Amazon Bestseller-Rang: '
@@ -1124,6 +1125,9 @@ class Worker(Thread):  # Get details {{{
             ):
                 self.parse_detail_cells_2(mi, children)
                 continue
+            else:
+                span_html = lxml.etree.tostring(span, encoding='unicode', method='html')
+                print("FIXME parse_detail_bullets: ignoring span", span_html)
 
     def parse_detail_cells_2(self, mi, children):
         # examples:
